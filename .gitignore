@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+test-results/
+
+# Secrets / local env — never commit
+.env
+*.pem
+*.key
+kubeconfig*
+
+# Load test output
+load-tests/results/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+
+# Local Claude Code tooling (machine-specific preview config)
+.claude/

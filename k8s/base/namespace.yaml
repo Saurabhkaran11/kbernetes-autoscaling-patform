@@ -1,0 +1,17 @@
+# A namespace groups this app's resources and scopes names, RBAC and quotas.
+#
+# The pod-security labels turn on Kubernetes' built-in Pod Security Admission at the
+# strictest level, "restricted". The API server REJECTS any pod here that runs as root,
+# allows privilege escalation, keeps Linux capabilities or skips the seccomp profile.
+#
+# Example — what happens if someone tries a root pod:
+#   kubectl -n autoscale-app run test --image=nginx
+#   Error: pods "test" is forbidden: violates PodSecurity "restricted:latest": ...
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: autoscale-app
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted

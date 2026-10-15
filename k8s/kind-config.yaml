@@ -1,0 +1,35 @@
+# kind cluster definition: 1 control-plane node + 2 worker nodes, each a Docker container.
+#
+# Create:  kind create cluster --name autoscale --config k8s/kind-config.yaml
+# Delete:  kind delete cluster --name autoscale
+#
+# Why 2 workers: with more than one node you can watch the scheduler spread replicas
+# across nodes (`kubectl get pods -o wide`), and test what happens when a node is lost.
+#
+# Why the node image is pinned with a digest: `kindest/node:v1.37.0` decides the
+# Kubernetes version. Pinning means everyone who clones the repo gets the same cluster.
+# Keep kubectl within one minor version of it (kubectl 1.36–1.38 for a 1.37 server).
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: autoscale
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
+    # Ports can only be mapped when the cluster is CREATED, so we reserve one now
+    # for the optional ingress controller (Phase 5): http://localhost:8088 -> node port 80.
+    # Bound to 127.0.0.1 so nothing on your Wi-Fi network can reach it.
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      - containerPort: 80
+        hostPort: 8088
+        listenAddress: "127.0.0.1"
+        protocol: TCP
+  - role: worker
+    image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
+  - role: worker
+    image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5

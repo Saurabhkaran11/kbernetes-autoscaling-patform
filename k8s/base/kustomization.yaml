@@ -1,0 +1,34 @@
+# Kustomize base: the environment-independent manifests.
+# Overlays (k8s/overlays/<env>) reuse this and patch only what differs.
+#
+# Render without applying:  kubectl kustomize k8s/overlays/local
+# Apply:                    kubectl apply -k k8s/overlays/local
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: autoscale-app
+
+# Added to every resource's metadata. includeSelectors: false keeps them OUT of selectors,
+# because a Deployment's selector is immutable: changing it later would force a delete-and-recreate.
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: autoscale-platform
+      app.kubernetes.io/managed-by: kustomize
+    includeSelectors: false
+
+resources:
+  - namespace.yaml
+  - deployment.yaml
+  - service.yaml
+  - hpa.yaml
+
+# The ConfigMap is GENERATED so its name gets a hash of its contents
+# (items-api-config-7h2k9...). Change a value -> new name -> the Deployment's pod
+# template changes -> Kubernetes rolls out new pods that read the new config.
+# A hand-written ConfigMap would update silently, and running pods would keep the old env vars.
+configMapGenerator:
+  - name: items-api-config
+    literals:
+      - APP_NAME=items-api
+      - APP_LOG_LEVEL=INFO
+      - APP_SEED_ITEMS=true

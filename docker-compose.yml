@@ -1,0 +1,64 @@
+# Local stack: the API plus Prometheus scraping it. No Kubernetes needed.
+#
+# Why Compose here: it's the quickest way to see metrics flow (app -> Prometheus)
+# before adding Kubernetes. Kubernetes replaces this file from Phase 4 on.
+#
+# Usage:
+#   docker compose up -d --build        # build the image and start both containers
+#   docker compose ps                   # both should be "running (healthy)"/"running"
+#   open http://localhost:8000/docs     # API
+#   open http://localhost:9090/targets  # Prometheus: the items-api target should be UP
+#   docker compose down                 # stop; add -v to also delete Prometheus data
+#
+# Networking: Compose creates a private bridge network. Containers reach each other by
+# service NAME (Prometheus scrapes http://api:8000), and only the ports listed under
+# `ports:` are published to your Mac.
+
+name: items-platform
+
+services:
+  api:
+    build: .
+    image: items-api:v1
+    ports:
+      # Bound to 127.0.0.1 so the API is reachable only from this Mac, not from your Wi-Fi network.
+      - "127.0.0.1:8000:8000"
+    environment:
+      APP_LOG_LEVEL: INFO
+      POD_NAME: compose-api
+    # Same hardening Kubernetes will apply (Phase 5 securityContext).
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    # Compose waits for the Dockerfile HEALTHCHECK before starting dependents.
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=2d
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      # Bind mount: a config file from the repo, read-only.
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # Named volume: Prometheus' time-series data survives `docker compose down` (but not `down -v`).
+      - prometheus-data:/prometheus
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  prometheus-data:

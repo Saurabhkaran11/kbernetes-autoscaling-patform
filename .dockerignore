@@ -1,0 +1,12 @@
+# Allow-list: ignore EVERYTHING, then re-include only what the image needs.
+# Safer than a deny-list, because a new file (a .env, a key, a 2 GB dataset)
+# is excluded by default instead of leaking into the build context and image.
+#
+# Example: `docker build .` now sends only a few KB to the daemon, not .venv/ (~60 MB) or .git/.
+*
+!app/
+!requirements.txt
+
+# Even inside app/, skip bytecode caches.
+**/__pycache__
+**/*.py[cod]

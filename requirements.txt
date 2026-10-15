@@ -1,0 +1,7 @@
+# Runtime dependencies — these go into the Docker image.
+# Pinned to exact versions so every build (laptop, CI, image) is identical.
+fastapi==0.143.2           # web framework: routing, validation, OpenAPI docs
+uvicorn==0.54.0            # ASGI server that runs the FastAPI app and handles SIGTERM
+pydantic==2.14.1           # request/response models and validation (FastAPI uses it)
+prometheus-client==0.26.0  # Counter/Histogram/Gauge + /metrics text format
+starlette==1.8.0          # ASGI toolkit under FastAPI; pinned so a FastAPI resolve cannot silently change it

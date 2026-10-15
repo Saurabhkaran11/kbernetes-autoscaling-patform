@@ -1,0 +1,23 @@
+# Service: one stable virtual IP and DNS name in front of a changing set of pods.
+#
+# Pods come and go (new IPs every time). The Service finds the current ones by LABEL
+# (`selector`) and load-balances across those that are Ready.
+#
+#   DNS name inside the cluster: items-api.autoscale-app.svc.cluster.local
+#   Port mapping:                Service :80  ->  container port named "http" (8000)
+#
+# ClusterIP = reachable only inside the cluster. From your Mac use:
+#   kubectl -n autoscale-app port-forward svc/items-api 8080:80
+apiVersion: v1
+kind: Service
+metadata:
+  name: items-api
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: items-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

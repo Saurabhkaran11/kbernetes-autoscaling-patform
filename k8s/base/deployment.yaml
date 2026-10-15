@@ -1,0 +1,124 @@
+# Deployment: keeps N identical pods running and replaces them on failure or update.
+#
+# Chain of ownership:  Deployment -> ReplicaSet (one per pod template version) -> Pods
+#   - Delete a pod and the ReplicaSet notices "1 of 2 running" and creates a new one.
+#   - Change the image and the Deployment creates a NEW ReplicaSet and shifts pods over
+#     (rolling update). The old ReplicaSet is kept at 0 replicas so you can roll back.
+#
+# Phase 5 added: startup/readiness/liveness probes, resource requests and limits,
+# a preStop pause for clean draining, and an HPA (hpa.yaml) that owns the replica count.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: items-api
+spec:
+  # No `replicas:` here on purpose. The HPA (hpa.yaml, minReplicas 2) owns the count.
+  # If this field were set, every `kubectl apply` would reset it to that number and fight the
+  # HPA, e.g. snapping 5 busy replicas back to 2 in the middle of a traffic spike.
+  revisionHistoryLimit: 5   # keep 5 old ReplicaSets for `kubectl rollout undo`
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: items-api   # must match the pod template labels below
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1         # create at most 1 extra pod during an update
+      maxUnavailable: 0   # never drop below the desired replica count
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: items-api
+    spec:
+      # The app never calls the Kubernetes API, so don't give it a service-account token.
+      automountServiceAccountToken: false
+      # Time between SIGTERM and SIGKILL. Uvicorn drains within 20 s (Dockerfile), well inside 30 s.
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true          # refuse to start if the image's user is root
+        runAsUser: 10001            # same numeric uid as the Dockerfile's USER
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault      # block dangerous syscalls (required by "restricted")
+      # Prefer spreading replicas across nodes, so one node failure can't take out every pod.
+      # "ScheduleAnyway" = a preference, not a hard rule (a 1-node cluster still works).
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: items-api
+      containers:
+        - name: api
+          image: items-api   # tag set by the overlay's `images:` field
+          # kind has no registry: images are side-loaded with `kind load docker-image`.
+          # IfNotPresent = use the loaded copy; "Always" would try to pull and fail.
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http          # named so the Service can target "http" instead of a number
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: items-api-config   # Kustomize appends a content hash to this name
+          env:
+            # Downward API: the pod's own name, shown in /api/v1/stats and every log line.
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          # ---- Resources -------------------------------------------------------------
+          # requests = what the scheduler RESERVES on a node. It's also the baseline the
+          #            HPA's percentage is measured against (60% of 100m = 60m per pod).
+          # limits   = the hard ceiling. Over the CPU limit the container is THROTTLED;
+          #            over the memory limit it is OOM-KILLED and restarted.
+          # Measured idle usage: ~3m CPU and ~37Mi memory per pod (kubectl top, Phase 5).
+          resources:
+            requests:
+              cpu: 100m        # 0.1 core
+              memory: 96Mi     # idle 37Mi plus headroom for request buffers
+            limits:
+              cpu: 500m        # room to burst while the HPA adds replicas
+              memory: 192Mi    # requests * 2; a leak gets killed before it hurts the node
+          # ---- Probes ----------------------------------------------------------------
+          # startupProbe:   gives the app time to boot; liveness/readiness start only after it passes.
+          # readinessProbe: failing = removed from the Service's endpoints (no restart).
+          # livenessProbe:  failing = container is KILLED and restarted. Keep it cheap and
+          #                 dependency-free, or a database blip would restart every pod.
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 1
+            failureThreshold: 30   # up to 30 s to start before Kubernetes gives up and restarts
+          readinessProbe:
+            httpGet: { path: /ready, port: http }
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2    # out of rotation after ~10 s of failures
+            successThreshold: 1
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3    # restart only after ~30 s of failures, so one slow GC can't kill the pod
+          # ---- Graceful termination --------------------------------------------------
+          # On deletion, endpoint removal and SIGTERM happen IN PARALLEL. Without a pause,
+          # the app stops listening before every node's kube-proxy has stopped routing to it,
+          # and a few requests get "connection refused". (Measured in Phase 4: 1–2 per kill.)
+          # The native sleep action (no shell or sleep binary needed) delays SIGTERM by 5 s,
+          # while the pod keeps serving its in-flight and late-arriving requests.
+          # Budget: 5 s preStop + up to 20 s Uvicorn drain < 30 s terminationGracePeriodSeconds.
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp   # the only writable path, since the root filesystem is read-only
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi

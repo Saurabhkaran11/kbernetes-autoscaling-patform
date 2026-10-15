@@ -1,0 +1,238 @@
+<title>Items API Platform Design</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: single reading column, diagrams in bordered scrollable panels, steps as a kubectl-style log */
+:root {
+  --bg: #f6f8fa; --surface: #ffffff; --fg: #1b2330; --muted: #5a6677;
+  --line: #d6dde6; --accent: #326ce5; --ok: #1f8a4c;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f141b; --surface: #161d27; --fg: #e3e9f1; --muted: #93a1b4;
+  --line: #2a3442; --accent: #6f9cff; --ok: #4cc27f; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f141b; --surface: #161d27; --fg: #e3e9f1; --muted: #93a1b4;
+  --line: #2a3442; --accent: #6f9cff; --ok: #4cc27f; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font: 15px/1.6 var(--sans); }
+main { max-width: 980px; margin: 0 auto; padding-block: 32px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 36px; }
+h1 { font-size: 1.9rem; line-height: 1.2; margin: 0 0 8px; text-wrap: balance; }
+h2 { font-size: 1.2rem; margin: 0 0 6px; text-wrap: balance; }
+p { margin: 0; max-width: 68ch; }
+.eyebrow { font: 500 .75rem var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); margin-bottom: 6px; }
+.lede { color: var(--muted); font-size: 1.05rem; }
+section { display: grid; gap: 12px; min-width: 0; }
+.note { color: var(--muted); font-size: .9rem; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px; overflow-x: auto; }
+pre.mermaid { margin: 0; background: transparent; text-align: center; }
+table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 500 .75rem var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+code { font-family: var(--mono); font-size: .88em; }
+ol.steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+ol.steps li { display: grid; grid-template-columns: 92px 1fr; gap: 12px; align-items: baseline; }
+.phase { font: 500 .72rem var(--mono); color: var(--muted); }
+.phase.ready { color: var(--ok); }
+.steps code { display: block; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 6px 10px; margin-top: 4px; overflow-x: auto; white-space: pre; }
+.steps div { min-width: 0; }
+@media (max-width: 520px) { ol.steps li { grid-template-columns: 1fr; gap: 2px; } }
+</style>
+
+<main>
+  <header>
+    <div class="eyebrow">kubernetes-autoscaling-platform · phase 1</div>
+    <h1>Cloud-Native Deployment and Auto-Scaling Platform</h1>
+    <p class="lede">A FastAPI "items" service, containerised, deployed to a local kind cluster, monitored with Prometheus and Grafana, scaled by an HPA and gated by GitHub Actions. It runs on a Mac for $0.</p>
+  </header>
+
+  <section>
+    <h2>The problem it solves</h2>
+    <div class="panel"><table>
+      <tr><th>Problem</th><th>Platform answer</th></tr>
+      <tr><td>App crashes and stays down</td><td>Deployment and liveness probe restart pods automatically</td></tr>
+      <tr><td>Fixed capacity collapses under spikes</td><td>HPA adds replicas when CPU exceeds 60% of the request</td></tr>
+      <tr><td>Failures found by users</td><td><code>/metrics</code>, Prometheus, Grafana and alert rules</td></tr>
+      <tr><td>Risky releases</td><td>CI tests and scans every push, then a rolling update with <code>rollout undo</code></td></tr>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>System architecture</h2>
+    <div class="panel"><pre class="mermaid">
+flowchart LR
+    dev[Developer macOS] -->|git push| gh[GitHub]
+    gh --> ci[GitHub Actions: lint, test, build, scan]
+    dev -->|docker build + kind load| svc
+    subgraph kind["kind cluster in Docker"]
+        subgraph app["ns: autoscale-app"]
+            svc[Service ClusterIP :80] --> p1[Pod 1 FastAPI]
+            svc --> p2[Pod 2 FastAPI]
+            svc -.-> pN[Pod N added by HPA]
+            cm[ConfigMap] -.env.-> p1
+            hpa[HPA min 2 max 6 CPU 60%] -.scales.-> p1
+        end
+        ms[metrics-server] -->|CPU and memory| hpa
+        subgraph mon["ns: monitoring"]
+            prom[Prometheus] --> am[Alertmanager]
+            graf[Grafana] --> prom
+            ksm[kube-state-metrics]
+        end
+        prom -->|scrape /metrics| p1
+        prom -->|scrape /metrics| p2
+        prom --> ksm
+    end
+    user[k6 or curl] -->|port-forward 8080| svc
+    dev -->|browser 3000| graf
+    </pre></div>
+  </section>
+
+  <section>
+    <h2>Sequence: one API request</h2>
+    <div class="panel"><pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant S as Service
+    participant P as Pod FastAPI
+    participant M as Metrics middleware
+    participant DB as In-memory store
+    participant PR as Prometheus
+    C->>S: POST /api/v1/items
+    S->>P: route to a READY pod
+    P->>M: start timer
+    M->>P: run handler, Pydantic validates
+    alt invalid body
+        P-->>M: 422 with field errors
+    else valid body
+        P->>DB: insert item
+        DB-->>P: item with id
+        P-->>M: 201 Created
+    end
+    M->>M: count request, observe latency, JSON log
+    M-->>C: response
+    Note over PR,P: every 15s, independently
+    PR->>P: GET /metrics
+    P-->>PR: counters and histogram
+    </pre></div>
+  </section>
+
+  <section>
+    <h2>Sequence: autoscaling loop</h2>
+    <div class="panel"><pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant K6 as k6 load
+    participant P as Pods (2)
+    participant MS as metrics-server
+    participant H as HPA
+    participant D as Deployment
+    K6->>P: ramp traffic up
+    P->>P: CPU 180m vs 100m request = 180%
+    loop every 15s
+        H->>MS: read pod CPU
+        H->>H: desired = ceil(2 x 180 / 60) = 6
+    end
+    H->>D: replicas = 6
+    D-->>P: 4 new pods pass /ready, join Service
+    K6->>P: load spread, CPU per pod falls
+    Note over H,D: load stops, 300s stabilization, back to 2
+    </pre></div>
+  </section>
+
+  <section>
+    <h2>Sequence: rolling update and rollback</h2>
+    <div class="panel"><pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant Dev as Developer
+    participant D as Deployment
+    participant V1 as ReplicaSet v1
+    participant V2 as ReplicaSet v2
+    participant S as Service
+    Dev->>D: kubectl set image items-api:v2
+    D->>V2: create 1 pod (maxSurge 1)
+    V2-->>S: passes /ready, gets traffic
+    D->>V1: stop 1 pod (maxUnavailable 0)
+    Note over V1: SIGTERM, /ready 503, drain, exit
+    alt v2 never becomes ready
+        D->>D: rollout stalls, v1 keeps serving
+        Dev->>D: kubectl rollout undo
+        D->>V1: scale back up
+        D->>V2: scale to 0
+    end
+    </pre></div>
+  </section>
+
+  <section>
+    <h2>Sequence: pod failure and self-healing</h2>
+    <div class="panel"><pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant Op as Operator
+    participant A as Pod A
+    participant S as Service endpoints
+    participant RS as ReplicaSet
+    participant N as New pod
+    Op->>A: kubectl delete pod
+    A-->>S: removed from endpoints
+    Note over S: Pod B keeps serving
+    RS->>RS: 1 running, 2 desired
+    RS->>N: create replacement
+    N-->>S: /ready 200, added back
+    </pre></div>
+  </section>
+
+  <section>
+    <h2>Monitoring and alerting flow</h2>
+    <div class="panel"><pre class="mermaid">
+flowchart LR
+    app[App /metrics] -->|scrape 15s| prom[(Prometheus)]
+    ksm[kube-state-metrics] --> prom
+    kub[kubelet cAdvisor] --> prom
+    prom -->|PromQL| graf[Grafana]
+    prom --> rules{Alert rules}
+    rules -->|error rate over 5% for 2m| am[Alertmanager]
+    rules -->|p95 over 500ms for 5m| am
+    rules -->|up equals 0 for 1m| am
+    am --> recv[Alertmanager UI or Slack webhook]
+    </pre></div>
+  </section>
+
+  <section>
+    <h2>Deployment workflow</h2>
+    <div class="panel"><pre class="mermaid">
+flowchart TD
+    a[Edit code] --> b[pytest locally]
+    b --> c[git push]
+    c --> d{GitHub Actions}
+    d --> d1[ruff] & d2[pytest] & d3[docker build] & d5[pip-audit]
+    d3 --> d4[Trivy scan]
+    d1 & d2 & d4 & d5 --> e{All green?}
+    e -- no --> a
+    e -- yes --> f[docker build items-api:vX]
+    f --> g[kind load docker-image]
+    g --> h[kubectl apply -k overlays/local]
+    h --> i{rollout healthy?}
+    i -- no --> k[kubectl rollout undo]
+    i -- yes --> l[Watch Grafana]
+    </pre></div>
+    <p class="note">CI does not deploy to the cluster yet. A GitHub-hosted runner cannot reach a kind cluster on a laptop.</p>
+  </section>
+
+  <section>
+    <h2>Deploy it yourself</h2>
+    <ol class="steps">
+      <li><span class="phase ready">phase 1 ✓</span><div>Install tools and start Docker Desktop<code>brew install kind helm k6 trivy act</code><code>./scripts/check-prereqs.sh</code></div></li>
+      <li><span class="phase">phase 2</span><div>Run and test the API<code>pytest -v</code><code>uvicorn app.main:app --port 8000</code></div></li>
+      <li><span class="phase">phase 3</span><div>Build and run the container<code>docker build -t items-api:v1 .</code></div></li>
+      <li><span class="phase">phase 4</span><div>Create the cluster<code>kind create cluster --name autoscale --config k8s/kind-config.yaml</code></div></li>
+      <li><span class="phase">phase 5</span><div>Install metrics-server, then deploy<code>kind load docker-image items-api:v1 --name autoscale</code><code>kubectl apply -k k8s/overlays/local</code></div></li>
+      <li><span class="phase">phase 6</span><div>Install monitoring<code>helm install monitoring prometheus-community/kube-prometheus-stack -n monitoring --create-namespace</code></div></li>
+      <li><span class="phase">phase 7</span><div>Load test and watch scaling<code>k6 run load-tests/ramp.js</code></div></li>
+      <li><span class="phase">cleanup</span><div>Delete everything<code>kind delete cluster --name autoscale</code></div></li>
+    </ol>
+  </section>
+</main>

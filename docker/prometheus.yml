@@ -1,0 +1,17 @@
+# Prometheus config for the Docker Compose stack only.
+# In Kubernetes (Phase 6) a ServiceMonitor replaces this file.
+#
+# Example check after `docker compose up -d`:
+#   curl -s localhost:9090/api/v1/targets | python3 -m json.tool | grep '"health"'
+#   -> "health": "up"
+
+global:
+  scrape_interval: 15s      # how often to pull /metrics
+  evaluation_interval: 15s  # how often to evaluate alert rules (none yet)
+
+scrape_configs:
+  - job_name: items-api
+    metrics_path: /metrics
+    static_configs:
+      # "api" is the Compose service name; Docker's embedded DNS resolves it.
+      - targets: ["api:8000"]

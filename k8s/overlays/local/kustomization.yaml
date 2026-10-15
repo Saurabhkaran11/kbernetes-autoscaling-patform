@@ -1,0 +1,25 @@
+# Overlay for the local kind cluster.
+#
+# Example: switch to debug logging locally without touching the base —
+#   edit APP_LOG_LEVEL below, then `kubectl apply -k k8s/overlays/local`
+#   -> new ConfigMap hash -> rolling restart -> pods log at DEBUG.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+# Which image tag to run. To deploy a new version, bump newTag and `kubectl apply -k`.
+# Prefer this over `kubectl set image`: the file in git stays the source of truth, and
+# the next `kubectl apply` won't silently roll the cluster back to whatever tag is here.
+images:
+  - name: items-api
+    newTag: v2
+
+configMapGenerator:
+  - name: items-api-config
+    behavior: merge
+    literals:
+      # No APP_VERSION here: the image sets it at build time (--build-arg APP_VERSION).
+      # A ConfigMap value would OVERRIDE it, making every version report the same number.
+      - APP_LOG_LEVEL=INFO

@@ -1,0 +1,47 @@
+# HorizontalPodAutoscaler: changes the Deployment's replica count based on CPU.
+#
+# Every ~15 s the HPA controller does:
+#   desired = ceil( currentReplicas * currentCPU% / targetCPU% )
+# where CPU% = average pod CPU usage / pod CPU REQUEST (100m).
+#
+# Example: 2 pods averaging 150m CPU = 150% of request.
+#          desired = ceil(2 * 150 / 60) = 5 replicas.
+#
+# Requirements (it silently does nothing without them):
+#   1. metrics-server installed (k8s/addons/metrics-server)
+#   2. resources.requests.cpu set on the container (deployment.yaml)
+#
+# Check:  kubectl -n autoscale-app get hpa      (TARGETS must show a number, not <unknown>)
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: items-api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: items-api
+  minReplicas: 2   # never fewer than 2: survives a pod or node loss
+  maxReplicas: 6   # cap so a runaway can't consume the whole (laptop) cluster
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60   # headroom: scale before pods hit their 500m limit
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0   # react to load immediately
+      policies:
+        - type: Pods
+          value: 2                    # add at most 2 pods per 15 s
+          periodSeconds: 15
+    scaleDown:
+      # Wait for 120 s of consistently low CPU before removing pods, so bursty traffic
+      # doesn't cause flapping. The Kubernetes default is 300 s; shortened for the local demo.
+      stabilizationWindowSeconds: 120
+      policies:
+        - type: Pods
+          value: 1                    # remove at most 1 pod per 30 s
+          periodSeconds: 30

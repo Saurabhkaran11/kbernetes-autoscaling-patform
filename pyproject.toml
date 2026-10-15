@@ -1,0 +1,22 @@
+# Tool configuration. No packaging metadata — the app ships as a container, not a wheel.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Put the repo root on sys.path so `import app` works whether you run `pytest` or `python -m pytest`.
+pythonpath = ["."]
+addopts = "-ra --strict-markers"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+# E/F: pyflakes + pycodestyle errors · I: import order · B: bugbear (likely bugs)
+# UP: modern syntax · S: bandit security checks · SIM: simplifications
+select = ["E", "F", "I", "B", "UP", "S", "SIM"]
+# B008: FastAPI's Query()/Path() in defaults is the documented idiom, not a bug.
+ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+# S101: `assert` is how pytest works.
+"tests/*" = ["S101"]
