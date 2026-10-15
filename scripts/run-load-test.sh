@@ -5,6 +5,7 @@
 #   ./scripts/run-load-test.sh smoke                 # 30 s, 5 VUs
 #   ./scripts/run-load-test.sh ramp                  # ~10 min ramp to 60 VUs
 #   PEAK_VUS=100 SETTLE=300 ./scripts/run-load-test.sh ramp
+#   DURATION=8m VUS=10 ./scripts/run-load-test.sh steady   # background traffic for drills
 #
 # What it records (also saved to load-tests/results/<test>-<timestamp>.log):
 #   * an HPA/replica timeline sampled every 15 s while the test runs, plus SETTLE seconds
@@ -20,8 +21,10 @@
 
 set -euo pipefail
 
-TEST=${1:?usage: run-load-test.sh <smoke|ramp>}
-PEAK_VUS=${PEAK_VUS:-60}
+TEST=${1:?usage: run-load-test.sh <smoke|ramp|steady>}
+PEAK_VUS=${PEAK_VUS:-60}            # ramp.js: VUs at the peak
+VUS=${VUS:-10}                      # steady.js: constant VUs
+DURATION=${DURATION:-8m}            # steady.js: how long to run
 SETTLE=${SETTLE:-0}                 # seconds to keep sampling the HPA after k6 finishes
 K6_IMAGE=grafana/k6:2.3.0
 JOB=k6-$TEST
@@ -33,7 +36,7 @@ LOG=$RESULTS_DIR/$TEST-$(date +%Y%m%d-%H%M%S).log
 # Send everything to the terminal AND the results file.
 exec > >(tee "$LOG") 2>&1
 
-echo "== $TEST  peak_vus=$PEAK_VUS  started $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+echo "== $TEST  peak_vus=$PEAK_VUS vus=$VUS duration=$DURATION  started $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 kubectl apply -k "$ROOT/load-tests" >/dev/null
 kubectl -n loadtest delete job "$JOB" --ignore-not-found --wait=true >/dev/null
 
@@ -62,6 +65,8 @@ spec:
           image: $K6_IMAGE
           env:
             - { name: PEAK_VUS, value: "$PEAK_VUS" }
+            - { name: VUS, value: "$VUS" }
+            - { name: DURATION, value: "$DURATION" }
           command: ["sh", "-c"]
           args:
             - >-

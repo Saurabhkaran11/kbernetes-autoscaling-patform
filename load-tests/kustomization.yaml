@@ -21,5 +21,6 @@ configMapGenerator:
       - common.js
       - smoke.js
       - ramp.js
+      - steady.js
     options:
       disableNameSuffixHash: true   # the Job mounts it by this fixed name
