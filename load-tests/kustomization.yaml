@@ -1,0 +1,25 @@
+# Namespace and script ConfigMap for running k6 INSIDE the cluster.
+#
+# Why in-cluster: traffic then goes through the Service and is spread over every replica,
+# like real users. k6 on the Mac through `kubectl port-forward` reaches only ONE pod, and
+# the port-forward tunnel itself becomes the bottleneck.
+#
+# The Job itself is created by scripts/run-load-test.sh (it picks which script to run).
+# Kustomize only reads files in or below this directory, which is why this file lives in
+# load-tests/ next to the scripts rather than in load-tests/k8s/.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: loadtest
+
+resources:
+  - k8s/namespace.yaml
+
+configMapGenerator:
+  - name: k6-scripts
+    files:
+      - common.js
+      - smoke.js
+      - ramp.js
+    options:
+      disableNameSuffixHash: true   # the Job mounts it by this fixed name

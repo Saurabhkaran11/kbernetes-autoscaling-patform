@@ -1,0 +1,10 @@
+# Separate namespace for load generators, so they can be cleaned up in one command
+# and never share resource quotas or policies with the app.
+# Restricted Pod Security: the k6 image runs as uid 12345, so it complies.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: loadtest
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
