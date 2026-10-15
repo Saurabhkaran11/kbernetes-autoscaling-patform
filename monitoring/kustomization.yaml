@@ -1,0 +1,22 @@
+# Monitoring objects for the Items API (the stack itself is installed by Helm).
+#
+# Apply:  kubectl apply -k monitoring
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: monitoring
+
+resources:
+  - prometheus/servicemonitor.yaml
+  - alerts/items-api-rules.yaml
+
+# Dashboard as code: the JSON lives in git, and Grafana's sidecar loads any ConfigMap
+# labelled grafana_dashboard=1. Edit the JSON, re-apply, and Grafana reloads it.
+configMapGenerator:
+  - name: items-api-dashboard
+    files:
+      - grafana/dashboards/items-api.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: true   # stable name; the sidecar reloads on content change

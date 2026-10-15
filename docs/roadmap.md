@@ -9,7 +9,7 @@ Each phase ends with: summary, files changed, verification commands, expected re
 | 3 ✅ | Docker | Image builds; runs as non-root; `/health` OK in container; Compose up | 3 |
 | 4 ✅ | Kubernetes basics | kind cluster; Namespace/Deployment/Service/ConfigMap applied; port-forward works; pod-delete self-heals | 4 |
 | 5 ✅ | Probes, limits, HPA | `kubectl top` works; HPA shows real `%`; rolling update + rollback demonstrated | 5, 6, 11 |
-| 6 | Prometheus + Grafana + alerts | Targets `UP`; dashboard shows live data; one alert fires and resolves | 8, 9, 10 |
+| 6 ✅ | Prometheus + Grafana + alerts | Targets `UP`; dashboard shows live data; one alert fires and resolves | 8, 9, 10 |
 | 7 | Load tests + failure drills | k6 results captured; HPA scale-up/down observed; 4 scenarios documented; postmortem | 7, 12 |
 | 8 | CI/CD + security | Actions green on GitHub; Trivy + pip-audit run; `act` works locally | 13, 14 |
 | 9 | Docs + portfolio | README reproducible from a clean clone; screenshots in `docs/images/` | 15 |
@@ -42,7 +42,8 @@ Each phase ends with: summary, files changed, verification commands, expected re
 
 - `monitoring/values-local.yaml` — trimmed kube-prometheus-stack for a laptop.
 - `monitoring/prometheus/servicemonitor.yaml` — tells Prometheus to scrape the app.
-- `monitoring/alerts/items-api-rules.yaml` — HighErrorRate, HighLatency, AppDown.
+- `monitoring/alerts/items-api-rules.yaml` — ItemsApiDown, HighErrorRate, HighLatency, AutoscalerAtMax, plus recording rules.
+- `monitoring/alerts/items-api-rules.test.yaml` — promtool unit tests (`make test-alerts`).
 - `monitoring/grafana/dashboards/items-api.json` — dashboard as code.
 
 ### Phase 7 — Load and failure

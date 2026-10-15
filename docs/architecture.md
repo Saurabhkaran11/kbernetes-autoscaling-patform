@@ -237,7 +237,8 @@ flowchart LR
     prom -->|evaluate rules| rules{Alert rules}
     rules -->|HighErrorRate &gt; 5% for 2m| am[Alertmanager]
     rules -->|HighLatency p95 &gt; 500ms for 5m| am
-    rules -->|AppDown up==0 for 1m| am
+    rules -->|ItemsApiDown no target up for 1m| am
+    rules -->|HPA at max replicas for 10m| am
     am -->|group · dedupe · route| recv[Receiver<br/>local: Alertmanager UI<br/>optional: Slack webhook]
 ```
 

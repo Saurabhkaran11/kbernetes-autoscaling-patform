@@ -8,7 +8,7 @@
 PY := .venv/bin/python
 PORT ?= 8000
 
-.PHONY: help install test lint format run
+.PHONY: help install test lint format run test-alerts
 
 help:  ## List targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -31,3 +31,12 @@ format:  ## Auto-fix lint issues and format code
 
 run:  ## Start the API with auto-reload
 	$(PY) -m uvicorn app.main:app --reload --port $(PORT) --no-access-log
+
+PROMETHEUS_IMAGE := prom/prometheus:v3.15.0
+
+test-alerts:  ## Unit-test Prometheus alert rules with promtool (needs Docker)
+	mkdir -p .build/alerts
+	$(PY) scripts/extract_rules.py monitoring/alerts/items-api-rules.yaml > .build/alerts/items-api.rules.yaml
+	cp monitoring/alerts/items-api-rules.test.yaml .build/alerts/
+	docker run --rm -v "$(CURDIR)/.build/alerts:/work:ro" -w /work --entrypoint promtool $(PROMETHEUS_IMAGE) check rules items-api.rules.yaml
+	docker run --rm -v "$(CURDIR)/.build/alerts:/work:ro" -w /work --entrypoint promtool $(PROMETHEUS_IMAGE) test rules items-api-rules.test.yaml

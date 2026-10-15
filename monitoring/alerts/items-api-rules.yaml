@@ -1,0 +1,80 @@
+# Alert rules for the Items API, loaded by the Prometheus Operator.
+#
+# Each alert has:
+#   expr        – PromQL that returns a result while the problem exists
+#   for         – how long it must stay true before firing (filters short blips)
+#   severity    – used by Alertmanager routing (critical = page, warning = ticket)
+#   annotations – what a human reads: what's wrong and where to start
+#
+# Unit tests for these rules: monitoring/alerts/items-api-rules.test.yaml (make test-alerts)
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: items-api
+spec:
+  groups:
+    - name: items-api.recording
+      rules:
+        # Recording rules precompute expensive expressions once per evaluation, so dashboards
+        # and alerts reuse them. Naming convention: level:metric:operations.
+        # Probe and scrape endpoints are excluded: Kubernetes calls them, users don't.
+        - record: job:http_requests:rate5m
+          expr: sum by (job) (rate(http_requests_total{job="items-api", path!~"/health|/ready|/metrics"}[5m]))
+        - record: job:http_errors:rate5m
+          expr: sum by (job) (rate(http_requests_total{job="items-api", path!~"/health|/ready|/metrics", status=~"5.."}[5m]))
+        - record: job:http_request_duration_seconds:p95_5m
+          expr: histogram_quantile(0.95, sum by (job, le) (rate(http_request_duration_seconds_bucket{job="items-api", path!~"/health|/ready|/metrics"}[5m])))
+
+    - name: items-api.alerts
+      rules:
+        - alert: ItemsApiDown
+          # `or vector(0)`: if every pod is gone there are NO `up` series at all, and a plain
+          # `sum(up) == 0` would return nothing and never fire. vector(0) fills that gap.
+          expr: (sum(up{job="items-api"}) or vector(0)) == 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Items API is down: no scrape target is up"
+            description: "No items-api pod has answered a Prometheus scrape for 1 minute."
+            runbook: "kubectl -n autoscale-app get deploy,pods; kubectl -n autoscale-app describe deploy items-api"
+
+        - alert: ItemsApiHighErrorRate
+          # Ratio of 5xx to all user requests. `> 0` on the denominator guard avoids alerting
+          # (or dividing by zero) when there is no traffic at all.
+          expr: |
+            job:http_errors:rate5m{job="items-api"}
+              / (job:http_requests:rate5m{job="items-api"} > 0)
+              > 0.05
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Items API 5xx rate is {{ $value | humanizePercentage }}"
+            description: "More than 5% of requests failed with a server error for 2 minutes."
+            runbook: "kubectl -n autoscale-app logs -l app.kubernetes.io/name=items-api --prefix | grep '\"status\": 5'"
+
+        - alert: ItemsApiHighLatency
+          expr: job:http_request_duration_seconds:p95_5m{job="items-api"} > 0.5
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Items API p95 latency is {{ $value | humanizeDuration }}"
+            description: "95th percentile latency has been above 500 ms for 5 minutes."
+            runbook: "Check CPU throttling and HPA: kubectl -n autoscale-app top pods; kubectl -n autoscale-app get hpa"
+
+        - alert: ItemsApiAutoscalerAtMax
+          # Phase 5 showed the HPA pinned at 6 replicas with CPU still at ~150%: the
+          # autoscaler had run out of room. That deserves a human decision (raise the cap,
+          # add nodes, optimise), so alert on it.
+          expr: |
+            kube_horizontalpodautoscaler_status_current_replicas{namespace="autoscale-app", horizontalpodautoscaler="items-api"}
+              >= kube_horizontalpodautoscaler_spec_max_replicas{namespace="autoscale-app", horizontalpodautoscaler="items-api"}
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Items API autoscaler has been at maxReplicas for 10 minutes"
+            description: "The HPA cannot add capacity. Raise maxReplicas, add nodes, or reduce per-request cost."
+            runbook: "kubectl -n autoscale-app describe hpa items-api"

@@ -1,0 +1,24 @@
+# ServiceMonitor: tells the Prometheus Operator "scrape every pod behind Services that
+# match this selector, on this port and path". The operator turns it into scrape config.
+#
+# Kubernetes equivalent of the static `targets: ["api:8000"]` in docker/prometheus.yml,
+# but dynamic: when the HPA adds a 5th pod, Prometheus starts scraping it automatically.
+#
+# Resulting job label: job="items-api" (the Service name), used by every alert and panel.
+#
+# Verify:  Prometheus UI -> Status -> Targets -> serviceMonitor/monitoring/items-api/0 (N/N up)
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: items-api
+spec:
+  namespaceSelector:
+    matchNames: [autoscale-app]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: items-api
+  endpoints:
+    - port: http          # the Service's named port
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 5s

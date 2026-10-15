@@ -86,7 +86,11 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         request.state.request_id = request_id
 
         start = time.perf_counter()
-        HTTP_IN_PROGRESS.inc()
+        # Don't count the scrape itself: Prometheus reads this gauge DURING a /metrics request,
+        # so counting it would make an idle pod always report 1 request in flight.
+        track_in_progress = request.url.path != "/metrics"
+        if track_in_progress:
+            HTTP_IN_PROGRESS.inc()
         try:
             response = await call_next(request)
         except Exception:
@@ -101,7 +105,8 @@ class MetricsMiddleware(BaseHTTPMiddleware):
                 content={"detail": "Internal server error", "request_id": request_id},
             )
         finally:
-            HTTP_IN_PROGRESS.dec()
+            if track_in_progress:
+                HTTP_IN_PROGRESS.dec()
 
         duration = time.perf_counter() - start
         path = _route_template(request)

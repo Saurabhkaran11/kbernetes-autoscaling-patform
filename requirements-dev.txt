@@ -3,3 +3,4 @@ pytest==9.1.1      # test runner
 pytest-cov==7.1.0  # coverage report
 httpx2==2.13.1     # HTTP client behind FastAPI's TestClient (Starlette 1.8 deprecates plain httpx)
 ruff==0.17.1       # linter + formatter
+pyyaml==6.0.3      # parse PrometheusRule YAML for promtool rule tests (make test-alerts)

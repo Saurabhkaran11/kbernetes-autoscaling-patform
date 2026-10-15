@@ -20,8 +20,9 @@ This project shows how a platform fixes each of these: self-healing pods, autosc
 | 3. Docker | ✅ done — 227 MB non-root image, Compose + Prometheus |
 | 4. Kubernetes basics | ✅ done — kind 3-node cluster, Kustomize, self-healing measured |
 | 5. Probes, limits, HPA | ✅ done — 0 failed requests per pod kill, HPA 2→6→2, rollback measured |
-| 6. Prometheus + Grafana | ⏳ next |
-| 7–10 | pending — see [docs/roadmap.md](docs/roadmap.md) |
+| 6. Prometheus + Grafana + alerts | ✅ done — 21/21 panels backed by real data, 11 promtool tests, live alert fired and resolved |
+| 7. Load tests + failure drills | ⏳ next |
+| 8–10 | pending — see [docs/roadmap.md](docs/roadmap.md) |
 
 ## Architecture at a glance
 
@@ -40,6 +41,9 @@ flowchart LR
 - Step-by-step deployment for anyone is in [docs/deployment.md](docs/deployment.md).
 - Docker concepts, security measures and measured results are in [docs/docker.md](docs/docker.md).
 - Kubernetes concepts, operations and drill results are in [docs/kubernetes.md](docs/kubernetes.md).
+- Monitoring, alert rules and evidence are in [docs/monitoring.md](docs/monitoring.md).
+
+![Items API Health dashboard](docs/images/grafana-items-api-health.jpg)
 
 ## API
 

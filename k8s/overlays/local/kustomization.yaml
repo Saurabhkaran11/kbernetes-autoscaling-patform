@@ -14,7 +14,7 @@ resources:
 # the next `kubectl apply` won't silently roll the cluster back to whatever tag is here.
 images:
   - name: items-api
-    newTag: v2
+    newTag: v3
 
 configMapGenerator:
   - name: items-api-config

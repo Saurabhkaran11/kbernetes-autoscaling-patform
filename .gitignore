@@ -14,6 +14,9 @@ test-results/
 *.key
 kubeconfig*
 
+# Generated build artifacts (rule files extracted for promtool)
+.build/
+
 # Load test output
 load-tests/results/
 

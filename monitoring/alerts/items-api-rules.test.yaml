@@ -1,0 +1,195 @@
+# Unit tests for monitoring/alerts/items-api-rules.yaml, run with promtool.
+#
+#   make test-alerts
+#
+# How it works: `input_series` are synthetic time series. "0+10x20" means start at 0 and
+# add 10 every `interval`, 20 times. promtool evaluates the rules at each `eval_time` and
+# compares the alerts that are FIRING (not pending) with `exp_alerts`.
+#
+# Example: ItemsApiDown has `for: 1m`. With no pods, at 30s it is only pending, so
+# exp_alerts is empty; at 2m it must be firing.
+rule_files:
+  - items-api.rules.yaml
+
+evaluation_interval: 15s
+
+tests:
+  # ------------------------------------------------------------------ ItemsApiDown
+  - name: down when there are no scrape targets at all (all pods gone)
+    interval: 15s
+    input_series:
+      - series: 'some_other_metric'
+        values: '1x20'
+    alert_rule_test:
+      - eval_time: 30s
+        alertname: ItemsApiDown
+        exp_alerts: []          # still pending: `for: 1m` hasn't elapsed
+      - eval_time: 2m
+        alertname: ItemsApiDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "Items API is down: no scrape target is up"
+              description: "No items-api pod has answered a Prometheus scrape for 1 minute."
+              runbook: "kubectl -n autoscale-app get deploy,pods; kubectl -n autoscale-app describe deploy items-api"
+
+  - name: down when targets exist but every scrape fails
+    interval: 15s
+    input_series:
+      - series: 'up{job="items-api", pod="a"}'
+        values: '0x20'
+      - series: 'up{job="items-api", pod="b"}'
+        values: '0x20'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: ItemsApiDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "Items API is down: no scrape target is up"
+              description: "No items-api pod has answered a Prometheus scrape for 1 minute."
+              runbook: "kubectl -n autoscale-app get deploy,pods; kubectl -n autoscale-app describe deploy items-api"
+
+  - name: not down while at least one pod is up
+    interval: 15s
+    input_series:
+      - series: 'up{job="items-api", pod="a"}'
+        values: '0x20'
+      - series: 'up{job="items-api", pod="b"}'
+        values: '1x20'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: ItemsApiDown
+        exp_alerts: []
+
+  # ------------------------------------------------------------------ ItemsApiHighErrorRate
+  - name: error rate of ~9% fires after 2 minutes
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="items-api", path="/api/v1/items", status="200", method="GET"}'
+        values: '0+100x20'
+      - series: 'http_requests_total{job="items-api", path="/api/v1/items", status="500", method="GET"}'
+        values: '0+10x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ItemsApiHighErrorRate
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: items-api
+            exp_annotations:
+              summary: "Items API 5xx rate is 9.091%"
+              description: "More than 5% of requests failed with a server error for 2 minutes."
+              runbook: "kubectl -n autoscale-app logs -l app.kubernetes.io/name=items-api --prefix | grep '\"status\": 5'"
+
+  - name: error rate of ~1% does not fire
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="items-api", path="/api/v1/items", status="200", method="GET"}'
+        values: '0+100x20'
+      - series: 'http_requests_total{job="items-api", path="/api/v1/items", status="500", method="GET"}'
+        values: '0+1x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ItemsApiHighErrorRate
+        exp_alerts: []
+
+  - name: 500s on probe paths are ignored (only user traffic counts)
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="items-api", path="/api/v1/items", status="200", method="GET"}'
+        values: '0+100x20'
+      - series: 'http_requests_total{job="items-api", path="/ready", status="503", method="GET"}'
+        values: '0+50x20'
+      - series: 'http_requests_total{job="items-api", path="/health", status="500", method="GET"}'
+        values: '0+50x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ItemsApiHighErrorRate
+        exp_alerts: []
+
+  - name: no traffic means no error-rate alert (no divide-by-zero)
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="items-api", path="/api/v1/items", status="500", method="GET"}'
+        values: '5x20'     # counter flat: zero rate
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ItemsApiHighErrorRate
+        exp_alerts: []
+
+  # ------------------------------------------------------------------ ItemsApiHighLatency
+  - name: p95 around 975 ms fires after 5 minutes
+    interval: 1m
+    input_series:
+      # Every request lands between 0.5 s and 1 s, so p95 interpolates to ~0.975 s.
+      - series: 'http_request_duration_seconds_bucket{job="items-api", path="/api/v1/items", method="GET", le="0.5"}'
+        values: '0x20'
+      - series: 'http_request_duration_seconds_bucket{job="items-api", path="/api/v1/items", method="GET", le="1.0"}'
+        values: '0+60x20'
+      - series: 'http_request_duration_seconds_bucket{job="items-api", path="/api/v1/items", method="GET", le="+Inf"}'
+        values: '0+60x20'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: ItemsApiHighLatency
+        exp_alerts: []          # true since ~1m, but `for: 5m` not yet met
+      - eval_time: 10m
+        alertname: ItemsApiHighLatency
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: items-api
+            exp_annotations:
+              summary: "Items API p95 latency is 975ms"
+              description: "95th percentile latency has been above 500 ms for 5 minutes."
+              runbook: "Check CPU throttling and HPA: kubectl -n autoscale-app top pods; kubectl -n autoscale-app get hpa"
+
+  - name: fast requests do not fire latency alert
+    interval: 1m
+    input_series:
+      - series: 'http_request_duration_seconds_bucket{job="items-api", path="/api/v1/items", method="GET", le="0.01"}'
+        values: '0+60x20'
+      - series: 'http_request_duration_seconds_bucket{job="items-api", path="/api/v1/items", method="GET", le="+Inf"}'
+        values: '0+60x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ItemsApiHighLatency
+        exp_alerts: []
+
+  # ------------------------------------------------------------------ ItemsApiAutoscalerAtMax
+  - name: autoscaler pinned at max for 10 minutes fires
+    interval: 1m
+    input_series:
+      - series: 'kube_horizontalpodautoscaler_status_current_replicas{namespace="autoscale-app", horizontalpodautoscaler="items-api"}'
+        values: '6x20'
+      - series: 'kube_horizontalpodautoscaler_spec_max_replicas{namespace="autoscale-app", horizontalpodautoscaler="items-api"}'
+        values: '6x20'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: ItemsApiAutoscalerAtMax
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: ItemsApiAutoscalerAtMax
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: autoscale-app
+              horizontalpodautoscaler: items-api
+            exp_annotations:
+              summary: "Items API autoscaler has been at maxReplicas for 10 minutes"
+              description: "The HPA cannot add capacity. Raise maxReplicas, add nodes, or reduce per-request cost."
+              runbook: "kubectl -n autoscale-app describe hpa items-api"
+
+  - name: autoscaler below max does not fire
+    interval: 1m
+    input_series:
+      - series: 'kube_horizontalpodautoscaler_status_current_replicas{namespace="autoscale-app", horizontalpodautoscaler="items-api"}'
+        values: '4x20'
+      - series: 'kube_horizontalpodautoscaler_spec_max_replicas{namespace="autoscale-app", horizontalpodautoscaler="items-api"}'
+        values: '6x20'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: ItemsApiAutoscalerAtMax
+        exp_alerts: []

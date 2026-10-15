@@ -1,0 +1,93 @@
+# kube-prometheus-stack values, trimmed for a laptop kind cluster.
+#
+# Install (chart pinned so everyone gets the same versions):
+#   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+#   kubectl create namespace monitoring
+#   kubectl -n monitoring create secret generic grafana-admin \
+#     --from-literal=admin-user=admin --from-literal=admin-password="$(openssl rand -base64 18)"
+#   helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
+#     --version 92.9.0 -n monitoring -f monitoring/values-local.yaml
+#
+# What the chart installs (and what each piece is for):
+#   Prometheus Operator   – turns ServiceMonitor / PrometheusRule objects into Prometheus config
+#   Prometheus            – scrapes and stores metrics, evaluates alert rules
+#   Alertmanager          – groups, deduplicates and routes firing alerts
+#   Grafana               – dashboards (Prometheus datasource pre-wired, uid "prometheus")
+#   kube-state-metrics    – object state as metrics: replicas, HPA status, pod phase
+#   kubelet/cAdvisor jobs – per-container CPU and memory
+
+# ---------------------------------------------------------------- Prometheus
+prometheus:
+  prometheusSpec:
+    # By default Prometheus only picks up ServiceMonitors/PrometheusRules carrying the Helm
+    # release label. Setting these to false means "select ALL of them", so our own objects
+    # in monitoring/ need no special label. Fine for a single-tenant learning cluster.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    scrapeInterval: 15s
+    evaluationInterval: 15s
+    retention: 2d            # laptop disk is limited
+    resources:
+      requests: { cpu: 100m, memory: 400Mi }
+      limits:   { memory: 1Gi }
+
+# ---------------------------------------------------------------- Alertmanager
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests: { cpu: 10m, memory: 32Mi }
+      limits:   { memory: 128Mi }
+  # The chart's default config routes everything to a "null" receiver: alerts are
+  # visible in the Alertmanager UI/API but not sent anywhere. That's the right default
+  # locally. Add a Slack/email receiver only with a secret, never inline credentials.
+
+# ---------------------------------------------------------------- Grafana
+grafana:
+  # Admin credentials come from a Secret created at install time (see top of file),
+  # so no password is ever committed to git or left at the chart's well-known default.
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard   # any ConfigMap with this label is loaded as a dashboard
+      labelValue: "1"
+      searchNamespace: ALL
+  # Sized from measurement: with a 384Mi limit Grafana 13 was OOMKilled (exit 137) twice
+  # while rendering dashboards; its working set peaked at 383Mi. The limit is now ~2x that peak.
+  resources:
+    requests: { cpu: 50m, memory: 256Mi }
+    limits:   { memory: 768Mi }
+
+# ---------------------------------------------------------------- what we turn OFF
+# node-exporter: host-level metrics (disk, network). Not needed for this project, and on
+# kind-on-Docker-Desktop its host mounts are the Docker VM, not your Mac — misleading data.
+nodeExporter:
+  enabled: false
+
+# kind binds these control-plane components to 127.0.0.1, so Prometheus can't scrape them.
+# Leaving them on would create permanently DOWN targets and permanently firing alerts —
+# noise that trains people to ignore alerts.
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+
+defaultRules:
+  rules:
+    etcd: false
+    kubeControllerManager: false
+    kubeProxy: false
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+    node: false
+    nodeExporterAlerting: false
+    nodeExporterRecording: false
+    windows: false

@@ -242,6 +242,13 @@ def test_client_errors_are_not_counted_as_server_errors(client):
     assert metric("http_errors_total", **labels) == before
 
 
+def test_in_progress_gauge_excludes_the_scrape_itself(client):
+    # An idle pod must report 0 in-flight requests, even while /metrics is being served.
+    body = client.get("/metrics").text
+    line = next(ln for ln in body.splitlines() if ln.startswith("http_requests_in_progress "))
+    assert float(line.split()[1]) == 0.0
+
+
 def test_items_stored_gauge_tracks_store(client):
     client.post("/api/v1/items", json=VALID_ITEM)
     assert metric("items_stored") == len(SEED_ITEMS) + 1

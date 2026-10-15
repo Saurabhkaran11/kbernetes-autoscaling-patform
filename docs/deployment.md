@@ -5,7 +5,7 @@ Anyone with a Mac can follow these steps top to bottom.
 Each step is tagged with the phase that delivers it.
 Steps tagged with a later phase than the current one will not work yet.
 
-> **Status:** Phases 1–5 complete. Steps 0–6 work today.
+> **Status:** Phases 1–6 complete. Steps 0–7 work today.
 
 ---
 
@@ -139,14 +139,14 @@ kubectl top nodes
 
 ## Step 6 — Deploy the app  `[Phase 4–5]`
 
-Build the tag the overlay asks for (`newTag` in `k8s/overlays/local/kustomization.yaml`, currently `v2`):
+Build the tag the overlay asks for (`newTag` in `k8s/overlays/local/kustomization.yaml`, currently `v3`):
 
 ```bash
-docker build -t items-api:v2 --build-arg APP_VERSION=0.2.0 .
+docker build -t items-api:v3 --build-arg APP_VERSION=0.3.0 .
 ```
 
 ```bash
-kind load docker-image items-api:v2 --name autoscale
+kind load docker-image items-api:v3 --name autoscale
 ```
 
 ```bash
@@ -187,14 +187,31 @@ helm repo add prometheus-community https://prometheus-community.github.io/helm-c
 ```
 
 ```bash
-helm install monitoring prometheus-community/kube-prometheus-stack -n monitoring --create-namespace -f monitoring/values-local.yaml
+kubectl create namespace monitoring
+```
+
+```bash
+kubectl -n monitoring create secret generic grafana-admin --from-literal=admin-user=admin --from-literal=admin-password="$(openssl rand -base64 18)"
+```
+
+```bash
+helm upgrade --install monitoring prometheus-community/kube-prometheus-stack --version 92.9.0 -n monitoring -f monitoring/values-local.yaml --wait --timeout 10m
+```
+
+```bash
+kubectl apply -k monitoring
 ```
 
 ```bash
 kubectl -n monitoring port-forward svc/monitoring-grafana 3000:80
 ```
 
-- Open http://localhost:3000 and load the "Items API Health" dashboard.
+- **Needs:** about 2.5 GB of free disk for the images, and about 1 GB of RAM in Docker.
+- **Expected:** 5 pods `Running` in `monitoring`.
+- Get the password with `kubectl -n monitoring get secret grafana-admin -o jsonpath='{.data.admin-password}' | base64 -d`.
+- Open http://localhost:3000/d/items-api/items-api-health.
+- Prometheus targets (port-forward `svc/monitoring-kube-prometheus-prometheus 9090:9090`) should list `serviceMonitor/monitoring/items-api/0` as `2/2 up`.
+- Details, alert tests and evidence are in [monitoring.md](monitoring.md).
 
 ## Step 8 — Load test and watch it scale  `[Phase 7]`
 
