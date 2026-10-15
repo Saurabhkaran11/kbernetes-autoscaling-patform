@@ -88,6 +88,8 @@ make run
 | `APP_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 | `POD_NAME` | hostname | Replica name in stats and logs |
 | `APP_SEED_ITEMS` | `true` | Create 3 demo items at startup |
+| `FAULT_ERROR_RATE` | `0` (off) | **Drills only:** share of `/api/*` requests that return 500 (0.0–1.0) |
+| `FAULT_LATENCY_MS` | `0` (off) | **Drills only:** extra delay on every `/api/*` request |
 
 ## Tech stack, and why each piece is here
 

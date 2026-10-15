@@ -34,6 +34,11 @@ class StatusResponse(BaseModel):
     status: str
 
 
+class Faults(BaseModel):
+    error_rate: float
+    latency_ms: int
+
+
 class Stats(BaseModel):
     app: str
     version: str
@@ -41,3 +46,4 @@ class Stats(BaseModel):
     item_count: int
     uptime_seconds: float
     started_at: datetime
+    faults: Faults

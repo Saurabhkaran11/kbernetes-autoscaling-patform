@@ -23,9 +23,10 @@ import time
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 
 from app.config import Settings, get_settings
+from app.faults import inject_faults
 from app.logging_config import setup_logging
 from app.metrics import ITEMS_STORED, MetricsMiddleware
 from app.routes import health, items, stats
@@ -55,6 +56,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ITEMS_STORED.set(app.state.store.count())
         app.state.ready = True
         log.info("startup complete", extra={"pod": settings.pod_name, "version": settings.app_version})
+        if settings.faults_enabled:
+            # Loud on purpose: a pod running with faults must be obvious in the logs.
+            log.warning(
+                "FAULT INJECTION ENABLED: error_rate=%s latency_ms=%s",
+                settings.fault_error_rate,
+                settings.fault_latency_ms,
+                extra={"pod": settings.pod_name},
+            )
         yield
         # ---- shutdown ----
         app.state.ready = False
@@ -74,8 +83,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.add_middleware(MetricsMiddleware, pod_name=settings.pod_name)
     app.include_router(health.router)
-    app.include_router(items.router)
-    app.include_router(stats.router)
+    # Only user-facing /api/v1 routes can have faults injected (both knobs default to off).
+    # Health, readiness and metrics stay truthful during drills.
+    api_dependencies = [Depends(inject_faults)]
+    app.include_router(items.router, dependencies=api_dependencies)
+    app.include_router(stats.router, dependencies=api_dependencies)
     return app
 
 

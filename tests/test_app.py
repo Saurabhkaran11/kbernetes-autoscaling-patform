@@ -16,12 +16,13 @@ before and after a request instead of checking absolute numbers.
 import json
 import logging
 import threading
+import time
 
 import pytest
 from fastapi.testclient import TestClient
 from prometheus_client import REGISTRY
 
-from app.config import Settings
+from app.config import Settings, get_settings
 from app.logging_config import JsonFormatter
 from app.main import create_app
 from app.store import SEED_ITEMS, ItemStore
@@ -340,3 +341,109 @@ def test_store_assigns_unique_ids_under_concurrency():
     ids = [i["id"] for i in store.list(limit=10_000, offset=0)]
     assert len(ids) == 1600
     assert len(set(ids)) == 1600
+
+
+# --------------------------------------------------------------------------- fault injection (Phase 7 drills)
+
+
+def test_faults_are_off_by_default(monkeypatch):
+    monkeypatch.delenv("FAULT_ERROR_RATE", raising=False)
+    monkeypatch.delenv("FAULT_LATENCY_MS", raising=False)
+    settings = get_settings()
+    assert settings.fault_error_rate == 0.0
+    assert settings.fault_latency_ms == 0
+    assert settings.faults_enabled is False
+
+
+def test_stats_reports_fault_settings(client):
+    assert client.get("/api/v1/stats").json()["faults"] == {"error_rate": 0.0, "latency_ms": 0}
+
+
+def test_valid_fault_settings_are_read_from_env(monkeypatch):
+    monkeypatch.setenv("FAULT_ERROR_RATE", "0.25")
+    monkeypatch.setenv("FAULT_LATENCY_MS", "200")
+    settings = get_settings()
+    assert settings.fault_error_rate == 0.25
+    assert settings.fault_latency_ms == 200
+    assert settings.faults_enabled is True
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("FAULT_ERROR_RATE", "1.5"),
+        ("FAULT_ERROR_RATE", "-0.1"),
+        ("FAULT_ERROR_RATE", "abc"),
+        ("FAULT_LATENCY_MS", "-5"),
+    ],
+)
+def test_invalid_fault_settings_fail_at_startup(monkeypatch, name, value):
+    # A typo must stop the pod from starting, not silently run a different drill.
+    monkeypatch.setenv(name, value)
+    with pytest.raises(ValueError):
+        get_settings()
+
+
+@pytest.fixture
+def failing_client():
+    with TestClient(create_app(make_settings(fault_error_rate=1.0))) as c:
+        yield c
+
+
+def test_error_fault_fails_api_routes_with_safe_500(failing_client):
+    r = failing_client.get("/api/v1/items")
+    assert r.status_code == 500
+    assert r.json() == {"detail": "Internal server error"}
+
+
+def test_error_fault_leaves_platform_endpoints_healthy(failing_client):
+    # Probes must stay truthful in a drill, or Kubernetes would restart pods and hide the problem.
+    assert failing_client.get("/health").status_code == 200
+    assert failing_client.get("/ready").status_code == 200
+    assert failing_client.get("/metrics").status_code == 200
+
+
+def test_injected_errors_are_counted_under_the_real_route(failing_client):
+    labels = {"method": "GET", "path": "/api/v1/items/{item_id}", "status": "500"}
+    before = metric("http_errors_total", **labels)
+    failing_client.get("/api/v1/items/1")
+    assert metric("http_errors_total", **labels) == before + 1
+
+
+def test_injected_errors_are_logged_as_drill(failing_client, caplog):
+    with caplog.at_level(logging.WARNING, logger="app.faults"):
+        failing_client.get("/api/v1/items")
+    assert any("fault injected" in r.getMessage() for r in caplog.records)
+
+
+def test_startup_warns_when_faults_enabled(capsys):
+    # Assert on stdout, which is what `kubectl logs` shows. (create_app() resets the root log
+    # handlers, so pytest's caplog handler would be removed before the warning is emitted.)
+    with TestClient(create_app(make_settings(fault_latency_ms=1))):
+        pass
+    lines = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.startswith("{")]
+    warning = next(line for line in lines if "FAULT INJECTION ENABLED" in line["msg"])
+    assert warning["level"] == "WARNING"
+    assert warning["pod"] == "test-pod"
+
+
+def test_latency_fault_slows_api_but_not_health():
+    with TestClient(create_app(make_settings(fault_latency_ms=150))) as c:
+        start = time.perf_counter()
+        assert c.get("/api/v1/items").status_code == 200
+        api_seconds = time.perf_counter() - start
+
+        start = time.perf_counter()
+        assert c.get("/health").status_code == 200
+        health_seconds = time.perf_counter() - start
+
+    assert api_seconds >= 0.15
+    assert health_seconds < 0.15
+
+
+def test_partial_error_rate_fails_roughly_that_share():
+    # 30% configured: with 400 requests the observed share lands well inside 0.2–0.4.
+    with TestClient(create_app(make_settings(fault_error_rate=0.3))) as c:
+        codes = [c.get("/api/v1/stats").status_code for _ in range(400)]
+    share = codes.count(500) / len(codes)
+    assert 0.2 < share < 0.4

@@ -28,4 +28,9 @@ async def stats(request: Request) -> dict:
         "item_count": state.store.count(),
         "uptime_seconds": round(time.monotonic() - state.started_monotonic, 2),
         "started_at": state.started_at,
+        # Shown so an engineer debugging errors can rule a drill in or out in one call.
+        "faults": {
+            "error_rate": state.settings.fault_error_rate,
+            "latency_ms": state.settings.fault_latency_ms,
+        },
     }
