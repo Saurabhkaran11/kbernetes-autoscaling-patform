@@ -253,3 +253,4 @@ These happened unplanned. Each one shows a symptom far from its cause.
 | `kubectl apply -k` silently rolled the app back to an old version | An earlier `kubectl set image` wasn't reflected in `newTag` | Deploy by changing `newTag` in git. After an emergency `set image` or `undo`, commit the matching change. |
 | Removing `replicas:` from the Deployment briefly dropped it to 1 pod | `kubectl apply` reset the field to its default | Hand replica control to the HPA before removing the field |
 | port-forward dies with `connection refused` | The pod behind it restarted (port-forward pins one pod) | `kubectl get pods`, then restart the port-forward |
+| `curl` from a debug pod times out (exit 28), but the app is healthy | NetworkPolicy (Phase 8) allows API ingress only from `loadtest` and Prometheus | Run test pods in `loadtest` (see `scripts/pod-kill-drill.sh` for a compliant pod spec), or use `kubectl port-forward`. Don't widen the policy for convenience. |

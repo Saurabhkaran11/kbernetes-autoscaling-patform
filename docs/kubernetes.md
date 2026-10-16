@@ -152,6 +152,8 @@ Pod failure drill (Scenario A):
 | `port-forward svc/items-api` from the Mac | 6 | all 6 answered by **one** pod |
 | Service DNS from a pod in the cluster | 20 | all `200`, split **11 / 9** across the two pods |
 
+*Since Phase 8, a NetworkPolicy blocks this test from the `default` namespace. Run test pods in `loadtest` instead.*
+
 ### Failed-resource drills
 
 | Drill | Observed |

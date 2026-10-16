@@ -22,8 +22,9 @@ This project shows how a platform fixes each of these: self-healing pods, autosc
 | 5. Probes, limits, HPA | ✅ done — 0 failed requests per pod kill, HPA 2→6→2, rollback measured |
 | 6. Prometheus + Grafana + alerts | ✅ done — 21/21 panels backed by real data, 11 promtool tests, live alert fired and resolved |
 | 7. Load tests + failure drills | ✅ done — 190k-request ramp with 0 errors, drills A–D with measured timelines, actual-incident postmortem |
-| 8. CI/CD + security | ⏳ next |
-| 9–10 | pending — see [docs/roadmap.md](docs/roadmap.md) |
+| 8. CI/CD + security | ✅ done — 3-job GitHub Actions workflow (validated locally; not yet run on GitHub), 4 security gates, hash-pinned deps, NetworkPolicies |
+| 9. Docs + portfolio | ⏳ next |
+| 10 | pending — see [docs/roadmap.md](docs/roadmap.md) |
 
 ## Architecture at a glance
 
@@ -46,6 +47,8 @@ flowchart LR
 - Load test numbers, all observed, are in [docs/load-test-results.md](docs/load-test-results.md).
 - Failure drills A–D and the runbook are in [docs/troubleshooting.md](docs/troubleshooting.md).
 - The postmortem for an actual incident is in [docs/incident-postmortem.md](docs/incident-postmortem.md).
+- The CI pipeline, local validation and deployment design are in [docs/ci-cd.md](docs/ci-cd.md).
+- Security controls, evidence and known limits are in [docs/security.md](docs/security.md).
 
 ![Items API Health dashboard](docs/images/grafana-items-api-health.jpg)
 
@@ -156,4 +159,4 @@ Then follow [docs/deployment.md](docs/deployment.md).
 
 - In-memory data: it is lost on restart, and each replica holds its own copy.
 - Local cluster only: no cloud load balancer, and you reach the app through port-forward.
-- Not production-secure: the hardening applied is listed in `docs/security.md` (Phase 8).
+- Not production-secure: no TLS, no API authentication and no image signing. See [docs/security.md](docs/security.md) §4.

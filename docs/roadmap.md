@@ -11,7 +11,7 @@ Each phase ends with: summary, files changed, verification commands, expected re
 | 5 ✅ | Probes, limits, HPA | `kubectl top` works; HPA shows real `%`; rolling update + rollback demonstrated | 5, 6, 11 |
 | 6 ✅ | Prometheus + Grafana + alerts | Targets `UP`; dashboard shows live data; one alert fires and resolves | 8, 9, 10 |
 | 7 ✅ | Load tests + failure drills | k6 results captured; HPA scale-up/down observed; 4 scenarios documented; postmortem | 7, 12 |
-| 8 | CI/CD + security | Actions green on GitHub; Trivy + pip-audit run; `act` works locally | 13, 14 |
+| 8 ✅ | CI/CD + security | Actions green on GitHub; Trivy + pip-audit run; `act` works locally | 13, 14 |
 | 9 | Docs + portfolio | README reproducible from a clean clone; screenshots in `docs/images/` | 15 |
 | 10 | Interview prep | 25 Q&A + 5 system-design questions + troubleshooting drills | — |
 
@@ -55,5 +55,8 @@ Each phase ends with: summary, files changed, verification commands, expected re
 
 ### Phase 8 — CI/CD and security
 
-- `.github/workflows/ci.yml` — checkout, Python, install, ruff, pytest (JUnit), docker build, Trivy, pip-audit.
-- `docs/security.md` — what's enforced, what's not, evidence.
+- `.github/workflows/ci.yml` — 3 jobs: lint+tests (JUnit, coverage gate), promtool rule tests, build + smoke + pip-audit + Trivy (secret, config, image).
+- `requirements.lock` (hash-pinned), `.trivyignore.yaml` (scoped, expiring), `make security` / `make render` / `make lock`.
+- `k8s/base/networkpolicy.yaml` — default deny; ingress only from Prometheus and loadtest.
+- `docs/security.md`, `docs/ci-cd.md` — controls with evidence, known limits, deployment design.
+- **Open:** first run on GitHub needs a remote (commits are local by choice).
