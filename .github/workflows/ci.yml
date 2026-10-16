@@ -1,0 +1,175 @@
+# CI: every push and pull request must pass lint, tests, alert-rule tests and security
+# gates before it can be merged. No deployment happens here (see docs/ci-cd.md for why).
+#
+# The same checks run locally, so you can validate before pushing:
+#   make lint test test-alerts security
+#   act -j test            # run one job in Docker with nektos/act
+#
+# Supply-chain rules used in this file:
+#   * Every third-party action is pinned to a full commit SHA, not a tag. A tag can be moved
+#     to point at different code; a SHA can't. The comment shows the human-readable version.
+#   * Tool images (Trivy, Prometheus/promtool) are pinned by digest, for the same reason.
+#   * The workflow token is read-only (permissions: contents: read). Nothing here needs more.
+#   * No secrets are used or required.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Least privilege for GITHUB_TOKEN: read the repository, nothing else.
+permissions:
+  contents: read
+
+# A newer push to the same branch/PR cancels the older run instead of queueing behind it.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  TRIVY_IMAGE: aquasec/trivy:0.76.0@sha256:2416d1f74045b57274df1a340eee6b510cacd73c66a6ccb8da092b117eb7d222
+  PROMETHEUS_IMAGE: prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
+  IMAGE: items-api:ci-${{ github.sha }}
+
+jobs:
+  # ------------------------------------------------------------------ 1. lint + unit tests
+  test:
+    name: Lint and unit tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false   # don't leave the token in .git/config for later steps
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.lock
+            requirements-dev.txt
+
+      - name: Install dependencies
+        # Runtime deps exactly as the image installs them (hash-checked), then test/lint tools.
+        run: |
+          python -m pip install --require-hashes --no-deps -r requirements.lock
+          python -m pip install -r requirements-dev.txt
+
+      - name: Lint (ruff)
+        run: |
+          ruff check --output-format=github .
+          ruff format --check .
+
+      - name: Unit tests (pytest)
+        run: >-
+          pytest -v
+          --junitxml=test-results/junit.xml
+          --cov=app --cov-report=xml:test-results/coverage.xml --cov-report=term
+          --cov-fail-under=95
+
+      - name: Publish test summary
+        # Writes a pass/fail table to the run's Summary page. Needs no extra permissions,
+        # unlike check-annotation actions that require `checks: write`.
+        if: always()
+        run: |
+          python - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          import xml.etree.ElementTree as ET
+          s = ET.parse("test-results/junit.xml").getroot()
+          s = s if s.tag == "testsuite" else s.find("testsuite")
+          total, fail, err, skip = (int(s.get(k, 0)) for k in ("tests", "failures", "errors", "skipped"))
+          cov = ET.parse("test-results/coverage.xml").getroot().get("line-rate")
+          print("### Unit tests")
+          print("| Tests | Passed | Failed | Errors | Skipped | Line coverage |")
+          print("|---|---|---|---|---|---|")
+          print(f"| {total} | {total - fail - err - skip} | {fail} | {err} | {skip} | {float(cov):.1%} |")
+          EOF
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-results
+          path: test-results/
+          retention-days: 14
+
+  # ------------------------------------------------------------------ 2. alert rule tests
+  alert-rules:
+    name: Prometheus alert rule tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install PyYAML
+        run: python -m pip install "pyyaml==6.0.3"
+      - name: promtool check + test rules
+        # Same target developers run locally; PY and PROMETHEUS_IMAGE are overridden for CI.
+        run: make test-alerts PY=python PROMETHEUS_IMAGE="$PROMETHEUS_IMAGE"
+
+  # ------------------------------------------------------------------ 3. build + security
+  security:
+    name: Build image and security scans
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Dependency vulnerabilities (pip-audit)
+        run: |
+          python -m pip install "pip-audit==2.10.1"
+          pip-audit --progress-spinner off --require-hashes --disable-pip -r requirements.lock
+
+      - name: Secret scan (trivy fs)
+        run: >-
+          docker run --rm -v "$PWD:/src:ro" -w /src "$TRIVY_IMAGE"
+          fs --quiet --scanners secret --exit-code 1 --skip-dirs .git .
+
+      - name: Render Kubernetes manifests (kustomize)
+        # Scan what `kubectl apply` would really send, not the base files.
+        run: |
+          mkdir -p .build/rendered
+          kubectl kustomize k8s/overlays/local > .build/rendered/app.yaml
+          kubectl kustomize monitoring > .build/rendered/monitoring.yaml
+          kubectl kustomize load-tests > .build/rendered/load-tests.yaml
+
+      - name: Misconfiguration scan (trivy config)
+        run: |
+          for target in Dockerfile .build/rendered; do
+            docker run --rm -v "$PWD:/src:ro" -w /src "$TRIVY_IMAGE" \
+              config --quiet --exit-code 1 --severity MEDIUM,HIGH,CRITICAL \
+              --ignorefile .trivyignore.yaml "$target"
+          done
+
+      - name: Build image
+        run: docker build --build-arg APP_VERSION="ci-${GITHUB_SHA::7}" -t "$IMAGE" .
+
+      - name: Smoke-test the image
+        # Prove the built image starts, runs as non-root and serves /ready under the same
+        # hardening Kubernetes uses (read-only root filesystem, no capabilities).
+        run: |
+          cid=$(docker run -d --read-only --tmpfs /tmp --cap-drop ALL -p 127.0.0.1:8000:8000 "$IMAGE")
+          trap 'docker rm -f "$cid" >/dev/null' EXIT
+          for _ in $(seq 1 30); do curl -sf localhost:8000/ready && break; sleep 1; done
+          curl -sf localhost:8000/ready
+          test "$(docker exec "$cid" id -u)" = 10001
+
+      - name: Image vulnerability scan (trivy image)
+        # Fails on HIGH/CRITICAL that have a fix. Unfixable base-image CVEs are reported in
+        # docs/security.md rather than blocking every build (see that file for the reasoning).
+        run: >-
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$TRIVY_IMAGE"
+          image --quiet --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$IMAGE"

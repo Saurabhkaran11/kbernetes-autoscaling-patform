@@ -36,7 +36,7 @@ lock:  ## Re-pin every runtime dep (direct + indirect) with sha256 hashes after 
 run:  ## Start the API with auto-reload
 	$(PY) -m uvicorn app.main:app --reload --port $(PORT) --no-access-log
 
-PROMETHEUS_IMAGE := prom/prometheus:v3.15.0
+PROMETHEUS_IMAGE := prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
 
 test-alerts:  ## Unit-test Prometheus alert rules with promtool (needs Docker)
 	mkdir -p .build/alerts
