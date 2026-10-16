@@ -193,3 +193,41 @@ tests:
       - eval_time: 15m
         alertname: ItemsApiAutoscalerAtMax
         exp_alerts: []
+
+  # ------------------------------------------------------------------ ContainerMemoryNearLimit
+  - name: container at ~93% of its memory limit for 5+ minutes fires
+    interval: 1m
+    input_series:
+      # 700Mi used of a 750Mi limit: the shape of the Phase 7 Grafana near-miss.
+      - series: 'container_memory_working_set_bytes{namespace="monitoring", pod="grafana-0", container="grafana"}'
+        values: '734003200x15'
+      - series: 'kube_pod_container_resource_limits{namespace="monitoring", pod="grafana-0", container="grafana", resource="memory"}'
+        values: '786432000x15'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: ContainerMemoryNearLimit
+        exp_alerts: []          # true, but `for: 5m` not yet met
+      - eval_time: 7m
+        alertname: ContainerMemoryNearLimit
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: monitoring
+              pod: grafana-0
+              container: grafana
+            exp_annotations:
+              summary: "monitoring/grafana-0 (grafana) is at 93.33% of its memory limit"
+              description: "Above 90% of the memory limit for 5 minutes. It will be OOMKilled (exit 137) if usage keeps growing."
+              runbook: "Check the trend in Grafana; raise the limit from measured peaks or find the leak. kubectl -n monitoring describe pod grafana-0"
+
+  - name: container at 50% of its memory limit does not fire
+    interval: 1m
+    input_series:
+      - series: 'container_memory_working_set_bytes{namespace="autoscale-app", pod="api-0", container="api"}'
+        values: '100663296x15'
+      - series: 'kube_pod_container_resource_limits{namespace="autoscale-app", pod="api-0", container="api", resource="memory"}'
+        values: '201326592x15'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ContainerMemoryNearLimit
+        exp_alerts: []

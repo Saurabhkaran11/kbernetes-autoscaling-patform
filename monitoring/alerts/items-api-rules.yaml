@@ -78,3 +78,23 @@ spec:
             summary: "Items API autoscaler has been at maxReplicas for 10 minutes"
             description: "The HPA cannot add capacity. Raise maxReplicas, add nodes, or reduce per-request cost."
             runbook: "kubectl -n autoscale-app describe hpa items-api"
+
+    - name: platform.alerts
+      rules:
+        - alert: ContainerMemoryNearLimit
+          # Working set is what the kernel's OOM killer compares against the limit. Warning at
+          # 90% for 5 minutes gives time to act BEFORE the container is killed with exit 137.
+          # Added after Grafana was OOMKilled in Phase 6 and then reached 90% of its raised
+          # limit in Phase 7 (see docs/incident-postmortem.md).
+          # Scoped to this project's namespaces, so the rule doesn't page on unrelated workloads.
+          expr: |
+            max by (namespace, pod, container) (container_memory_working_set_bytes{namespace=~"autoscale-app|monitoring", container!=""})
+              / max by (namespace, pod, container) (kube_pod_container_resource_limits{namespace=~"autoscale-app|monitoring", resource="memory"})
+              > 0.9
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }}) is at {{ $value | humanizePercentage }} of its memory limit"
+            description: "Above 90% of the memory limit for 5 minutes. It will be OOMKilled (exit 137) if usage keeps growing."
+            runbook: "Check the trend in Grafana; raise the limit from measured peaks or find the leak. kubectl -n {{ $labels.namespace }} describe pod {{ $labels.pod }}"

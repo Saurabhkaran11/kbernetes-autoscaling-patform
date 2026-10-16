@@ -56,11 +56,15 @@ grafana:
       label: grafana_dashboard   # any ConfigMap with this label is loaded as a dashboard
       labelValue: "1"
       searchNamespace: ALL
-  # Sized from measurement: with a 384Mi limit Grafana 13 was OOMKilled (exit 137) twice
-  # while rendering dashboards; its working set peaked at 383Mi. The limit is now ~2x that peak.
+  # Sized from measurement, twice:
+  #   1. At a 384Mi limit Grafana 13 was OOMKilled twice while rendering dashboards
+  #      (working set peaked at 376-383Mi). The limit was raised to 768Mi.
+  #   2. During the Phase 7 ramp test, rendering a 15-minute dashboard under load peaked at
+  #      694Mi, which is 90% of 768Mi. Too little headroom, so the limit is now 1Gi.
+  # The ContainerMemoryNearLimit alert (monitoring/alerts) now warns at 90% before an OOM.
   resources:
-    requests: { cpu: 50m, memory: 256Mi }
-    limits:   { memory: 768Mi }
+    requests: { cpu: 50m, memory: 384Mi }
+    limits:   { memory: 1Gi }
 
 # ---------------------------------------------------------------- what we turn OFF
 # node-exporter: host-level metrics (disk, network). Not needed for this project, and on
