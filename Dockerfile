@@ -27,10 +27,12 @@ ENV PIP_NO_CACHE_DIR=1 \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy ONLY the requirements first. Docker caches each layer, so as long as
-# requirements.txt is unchanged, editing app code skips this slow install step.
-COPY requirements.txt .
-RUN pip install -r requirements.txt \
+# Copy ONLY the lock file first. Docker caches each layer, so as long as
+# requirements.lock is unchanged, editing app code skips this slow install step.
+# --require-hashes: every package must match a sha256 in the lock (supply-chain check).
+# --no-deps: install exactly what's locked, never resolve something extra at build time.
+COPY requirements.lock .
+RUN pip install --require-hashes --no-deps -r requirements.lock \
  # pip is not needed at runtime. Removing it shrinks the image and removes pip's own CVEs from scans.
  && pip uninstall -y pip
 

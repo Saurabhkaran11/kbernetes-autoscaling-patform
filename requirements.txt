@@ -1,5 +1,12 @@
-# Runtime dependencies — these go into the Docker image.
-# Pinned to exact versions so every build (laptop, CI, image) is identical.
+# Runtime dependencies we use DIRECTLY, pinned to exact versions.
+#
+# The image is NOT built from this file but from requirements.lock (`make lock`), which
+# also pins every INDIRECT dependency and the sha256 hash of each package file. Without it,
+# an indirect dependency (e.g. opentelemetry-api, pulled in by another package) could change
+# between builds, and a tampered upload would install silently. With
+# `pip install --require-hashes` (Dockerfile), a mismatched file fails the build.
+#
+# Workflow: edit this file -> `make lock` -> commit both files.
 fastapi==0.143.2           # web framework: routing, validation, OpenAPI docs
 uvicorn==0.54.0            # ASGI server that runs the FastAPI app and handles SIGTERM
 pydantic==2.14.1           # request/response models and validation (FastAPI uses it)

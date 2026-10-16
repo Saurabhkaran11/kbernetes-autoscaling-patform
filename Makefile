@@ -8,7 +8,7 @@
 PY := .venv/bin/python
 PORT ?= 8000
 
-.PHONY: help install test lint format run test-alerts
+.PHONY: help install test lint format run test-alerts lock
 
 help:  ## List targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -28,6 +28,10 @@ lint:  ## Lint and check formatting (what CI runs)
 format:  ## Auto-fix lint issues and format code
 	$(PY) -m ruff check --fix .
 	$(PY) -m ruff format .
+
+lock:  ## Re-pin every runtime dep (direct + indirect) with sha256 hashes after editing requirements.txt
+	uv pip compile requirements.txt --python-version 3.12 --python-platform linux \
+		--generate-hashes --custom-compile-command "make lock" -o requirements.lock
 
 run:  ## Start the API with auto-reload
 	$(PY) -m uvicorn app.main:app --reload --port $(PORT) --no-access-log

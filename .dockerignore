@@ -5,7 +5,7 @@
 # Example: `docker build .` now sends only a few KB to the daemon, not .venv/ (~60 MB) or .git/.
 *
 !app/
-!requirements.txt
+!requirements.lock
 
 # Even inside app/, skip bytecode caches.
 **/__pycache__
