@@ -22,7 +22,7 @@ This project shows how a platform fixes each of these: self-healing pods, autosc
 | 5. Probes, limits, HPA | ✅ done — 0 failed requests per pod kill, HPA 2→6→2, rollback measured |
 | 6. Prometheus + Grafana + alerts | ✅ done — 21/21 panels backed by real data, 11 promtool tests, live alert fired and resolved |
 | 7. Load tests + failure drills | ✅ done — 190k-request ramp with 0 errors, drills A–D with measured timelines, actual-incident postmortem |
-| 8. CI/CD + security | ✅ done — 3-job GitHub Actions workflow (validated locally; not yet run on GitHub), 4 security gates, hash-pinned deps, NetworkPolicies |
+| 8. CI/CD + security | ✅ done — 3-job GitHub Actions workflow, green on its first GitHub run, 4 security gates, hash-pinned deps, NetworkPolicies |
 | 9. Docs + portfolio | ⏳ next |
 | 10 | pending — see [docs/roadmap.md](docs/roadmap.md) |
 

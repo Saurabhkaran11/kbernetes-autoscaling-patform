@@ -67,9 +67,41 @@ act -j alert-rules
 act -j security
 ```
 
-**The real end-to-end proof is the first run on GitHub.** This repository has no remote yet (commits are local by choice).
+## 3. First run on GitHub (observed)
 
-## 3. Running it on GitHub (when you're ready)
+- **Repository:** private, `Saurabhkaran11/kubernetes-autoscaling-platform`.
+- **First push:** `main` at `921e58b`, run [#38860472342](https://github.com/Saurabhkaran11/kubernetes-autoscaling-platform/actions/runs/38860472342), 2026-10-16 06:18Z.
+- **Result:** **success on the first attempt**, with no workflow changes needed after the local validation.
+
+| Job | Result | Duration | Evidence from the log |
+|---|---|---|---|
+| Lint and unit tests | ✅ | 19 s | `62 passed`; `Required test coverage of 95% reached. Total coverage: 100.00%` |
+| Prometheus alert rule tests | ✅ | 11 s | `SUCCESS: 8 rules found`, `SUCCESS` |
+| Build image and security scans | ✅ | 49 s | pip-audit `No known vulnerabilities found`; smoke `{"status":"ready"}`; Trivy image: 0 fixable HIGH/CRITICAL |
+
+- The jobs run in parallel, so the pipeline takes about 49 s end to end.
+- The `test-results` artifact (2.5 KB, JUnit and coverage XML) is kept until 2026-10-30.
+- The run produced **0 annotations** (no warnings and no deprecation notices).
+
+## 4. Re-running it on GitHub
+
+Commits stay local by default, and each push is a deliberate step:
+
+```bash
+git push
+```
+
+```bash
+gh run watch
+```
+
+To re-run the workflow without a new commit:
+
+```bash
+gh workflow run ci.yml
+```
+
+How the repository was created, for reference:
 
 ```bash
 gh repo create kubernetes-autoscaling-platform --private --source . --remote origin
@@ -83,10 +115,7 @@ git push -u origin main
 gh run watch
 ```
 
-- **Expected:** the three jobs `Lint and unit tests`, `Prometheus alert rule tests` and `Build image and security scans` all go green.
-- The Summary page shows the unit-test table, and the `test-results` artifact appears on the run.
-
-## 4. Deployment automation: designed, deliberately not built
+## 5. Deployment automation: designed, deliberately not built
 
 The CI workflow never deploys. Adding CD here would be pretend:
 

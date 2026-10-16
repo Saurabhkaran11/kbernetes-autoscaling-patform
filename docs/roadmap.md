@@ -59,4 +59,4 @@ Each phase ends with: summary, files changed, verification commands, expected re
 - `requirements.lock` (hash-pinned), `.trivyignore.yaml` (scoped, expiring), `make security` / `make render` / `make lock`.
 - `k8s/base/networkpolicy.yaml` — default deny; ingress only from Prometheus and loadtest.
 - `docs/security.md`, `docs/ci-cd.md` — controls with evidence, known limits, deployment design.
-- **Open:** first run on GitHub needs a remote (commits are local by choice).
+- First GitHub run (private repo): all 3 jobs green, run 38860472342.
