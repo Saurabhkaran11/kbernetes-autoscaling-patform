@@ -2,7 +2,7 @@
 # pod-kill-drill.sh: Scenario A, "a pod unexpectedly terminates", measured under live traffic.
 #
 # What it does:
-#   1. Starts a curl pod that calls the Service ~10 times/second for DURATION seconds.
+#   1. Starts a curl pod (in the loadtest namespace) that calls the Service ~10 times/second for DURATION seconds.
 #   2. Deletes one serving pod (Running and not already terminating).
 #   3. Waits for the Deployment to be back at full strength.
 #   4. Reports requests per HTTP status and per pod. Status "000" = connection failed.
@@ -24,18 +24,46 @@ DURATION=${DURATION:-45}
 URL=http://items-api.$NS.svc.cluster.local/api/v1/stats
 OUT=$(mktemp -t drill)
 
-kubectl delete pod -n default traffic --ignore-not-found --wait=true >/dev/null 2>&1
+# Traffic comes from the loadtest namespace: the NetworkPolicy in k8s/base allows only
+# loadtest and Prometheus to reach the API (a pod in "default" would just time out).
+# The namespace enforces the "restricted" Pod Security level, so the pod must declare a
+# non-root user, no privilege escalation, no capabilities and the default seccomp profile.
+TRAFFIC_NS=loadtest
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+kubectl apply -k "$ROOT/load-tests" >/dev/null
+kubectl delete pod -n "$TRAFFIC_NS" traffic --ignore-not-found --wait=true >/dev/null 2>&1
 
-# Each output line: "<epoch> <http status> <pod that answered>"
-kubectl run traffic --restart=Never --image=curlimages/curl:8.11.1 -n default -- sh -c "
-  end=\$(( \$(date +%s) + $DURATION ))
-  while [ \$(date +%s) -lt \$end ]; do
-    r=\$(curl -s -m 2 -w ' %{http_code}' $URL)
-    echo \"\$(date +%s) \${r##* } \$(echo \"\$r\" | grep -o 'items-api-[a-z0-9-]*')\"
-    sleep 0.1
-  done" >/dev/null
+# The loop the pod runs. Each output line: "<epoch> <http status> <pod that answered>"
+LOOP="end=\$(( \$(date +%s) + $DURATION ))
+while [ \$(date +%s) -lt \$end ]; do
+  r=\$(curl -s -m 2 -w ' %{http_code}' $URL)
+  echo \"\$(date +%s) \${r##* } \$(echo \"\$r\" | grep -o 'items-api-[a-z0-9-]*')\"
+  sleep 0.1
+done"
 
-kubectl wait -n default --for=condition=Ready pod/traffic --timeout=60s >/dev/null
+# The pod spec goes in as JSON (built by python, so the loop is quoted safely).
+python3 - "$TRAFFIC_NS" "$LOOP" <<'PY' | kubectl apply -f - >/dev/null
+import json, sys
+ns, loop = sys.argv[1], sys.argv[2]
+print(json.dumps({
+    "apiVersion": "v1", "kind": "Pod",
+    "metadata": {"name": "traffic", "namespace": ns},
+    "spec": {
+        "restartPolicy": "Never",
+        "automountServiceAccountToken": False,
+        "securityContext": {"runAsNonRoot": True, "runAsUser": 100,
+                            "seccompProfile": {"type": "RuntimeDefault"}},
+        "containers": [{
+            "name": "curl", "image": "curlimages/curl:8.11.1",
+            "command": ["sh", "-c", loop],
+            "securityContext": {"allowPrivilegeEscalation": False,
+                                "capabilities": {"drop": ["ALL"]}},
+        }],
+    },
+}))
+PY
+
+kubectl wait -n "$TRAFFIC_NS" --for=condition=Ready pod/traffic --timeout=60s >/dev/null
 sleep 8   # collect a baseline before the failure
 
 victim=$(kubectl -n "$NS" get pods -l app.kubernetes.io/name=items-api -o json | python3 -c '
@@ -51,9 +79,9 @@ t1=$(python3 -c 'import time; print(time.time())')
 python3 -c "print(f'victim gone after {$t1 - $t0:.1f}s')"
 kubectl -n "$NS" rollout status deploy/items-api --timeout=90s
 
-kubectl wait -n default --for=jsonpath='{.status.phase}'=Succeeded pod/traffic --timeout=$((DURATION + 60))s >/dev/null
-kubectl logs -n default traffic > "$OUT"
-kubectl delete pod -n default traffic --wait=false >/dev/null
+kubectl wait -n "$TRAFFIC_NS" --for=jsonpath='{.status.phase}'=Succeeded pod/traffic --timeout=$((DURATION + 60))s >/dev/null
+kubectl logs -n "$TRAFFIC_NS" traffic > "$OUT"
+kubectl delete pod -n "$TRAFFIC_NS" traffic --wait=false >/dev/null
 
 echo "requests by status:"; awk '{print $2}' "$OUT" | sort | uniq -c
 echo "requests by pod:";    awk '{print ($3 == "" ? "(no response)" : $3)}' "$OUT" | sort | uniq -c

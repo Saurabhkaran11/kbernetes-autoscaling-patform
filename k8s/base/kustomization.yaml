@@ -21,6 +21,7 @@ resources:
   - deployment.yaml
   - service.yaml
   - hpa.yaml
+  - networkpolicy.yaml
 
 # The ConfigMap is GENERATED so its name gets a hash of its contents
 # (items-api-config-7h2k9...). Change a value -> new name -> the Deployment's pod

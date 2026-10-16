@@ -1,0 +1,51 @@
+# NetworkPolicies: who may talk to the Items API, and where the API may talk to.
+#
+# Without any policy, every pod in the cluster can reach every other pod. These two
+# policies switch the namespace to "deny unless allowed" (least privilege for the network).
+#
+# Verified on kind (kindnet v20260820 enforces NetworkPolicy):
+#   from namespace loadtest          -> 200    (allowed: load generator)
+#   from Prometheus in monitoring    -> scraped (allowed: metrics)
+#   from namespace default           -> timeout (denied)
+#   from the API pod to the internet -> timeout (denied: no egress)
+#   kubelet probes and kubectl port-forward keep working (they don't go through the pod network)
+
+# 1) Default deny: every pod in autoscale-app gets NO ingress and NO egress unless another
+#    policy allows it. A new workload added here later is isolated by default.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+spec:
+  podSelector: {}            # all pods in the namespace
+  policyTypes: [Ingress, Egress]
+---
+# 2) The only allowed inbound traffic: the API's HTTP port, from
+#    * Prometheus pods in the monitoring namespace (to scrape /metrics)
+#    * any pod in the loadtest namespace (k6 and the drill scripts)
+#    No egress rule exists, so the API can't open outbound connections. It doesn't need to,
+#    and that limits what a compromised pod could reach.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: items-api-allow-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: items-api
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        # namespaceSelector AND podSelector in ONE entry = Prometheus pods in monitoring only.
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: loadtest
+      ports:
+        - port: http         # the container's named port (8000)
+          protocol: TCP
