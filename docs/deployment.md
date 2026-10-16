@@ -5,7 +5,7 @@ Anyone with a Mac can follow these steps top to bottom.
 Each step is tagged with the phase that delivers it.
 Steps tagged with a later phase than the current one will not work yet.
 
-> **Status:** Phases 1–6 complete. Steps 0–7 work today.
+> **Status:** Phases 1–7 complete. Steps 0–9 work today.
 
 ---
 
@@ -215,20 +215,46 @@ kubectl -n monitoring port-forward svc/monitoring-grafana 3000:80
 
 ## Step 8 — Load test and watch it scale  `[Phase 7]`
 
-```bash
-kubectl -n autoscale-app get hpa -w
-```
+Smoke test first (30 s). If it fails, a bigger test is pointless:
 
 ```bash
-k6 run load-tests/ramp.js
+./scripts/run-load-test.sh smoke
 ```
 
-- **Expected:** replicas rise from 2 toward 6 during load, then fall back about 5 minutes after load ends.
+- **Expected:** `failed=0.00%`, p95 in single-digit milliseconds, and `thresholds: PASSED`.
+
+The full ramp (about 10 min of load, plus 5 min watching scale-down):
+
+```bash
+SETTLE=300 ./scripts/run-load-test.sh ramp
+```
+
+- **Expected:**
+  - replicas rise from 2 to 6 within about 5 minutes,
+  - `thresholds: PASSED`,
+  - replicas back to 2 about 3 minutes after the load ends.
+- **Observed run:** 190,254 requests, 0% errors, p95 10.4 ms. See [load-test-results.md](load-test-results.md).
+- k6 runs as a Job **inside** the cluster, so traffic spreads across all replicas. Running k6 from the Mac through port-forward would reach only one pod.
+
+Failure drills (each takes about 10 minutes and needs the monitoring stack from Step 7):
+
+```bash
+./scripts/pod-kill-drill.sh
+```
+
+- Scenarios B–D, with the exact commands, are in [troubleshooting.md](troubleshooting.md).
 
 ## Step 9 — Clean up (frees all resources)
 
 ```bash
 kind delete cluster --name autoscale
+```
+
+- This deletes the whole cluster, including monitoring and load-test results inside it. Local files in `load-tests/results/` stay.
+- To also free the Docker images this project built:
+
+```bash
+docker image rm items-api:v1 items-api:v2 items-api:v3 items-api:v4 items-api:v5-regression items-api:v3-broken
 ```
 
 ---

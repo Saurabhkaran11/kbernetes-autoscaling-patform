@@ -10,7 +10,7 @@ Each phase ends with: summary, files changed, verification commands, expected re
 | 4 ✅ | Kubernetes basics | kind cluster; Namespace/Deployment/Service/ConfigMap applied; port-forward works; pod-delete self-heals | 4 |
 | 5 ✅ | Probes, limits, HPA | `kubectl top` works; HPA shows real `%`; rolling update + rollback demonstrated | 5, 6, 11 |
 | 6 ✅ | Prometheus + Grafana + alerts | Targets `UP`; dashboard shows live data; one alert fires and resolves | 8, 9, 10 |
-| 7 | Load tests + failure drills | k6 results captured; HPA scale-up/down observed; 4 scenarios documented; postmortem | 7, 12 |
+| 7 ✅ | Load tests + failure drills | k6 results captured; HPA scale-up/down observed; 4 scenarios documented; postmortem | 7, 12 |
 | 8 | CI/CD + security | Actions green on GitHub; Trivy + pip-audit run; `act` works locally | 13, 14 |
 | 9 | Docs + portfolio | README reproducible from a clean clone; screenshots in `docs/images/` | 15 |
 | 10 | Interview prep | 25 Q&A + 5 system-design questions + troubleshooting drills | — |
@@ -48,9 +48,10 @@ Each phase ends with: summary, files changed, verification commands, expected re
 
 ### Phase 7 — Load and failure
 
-- `load-tests/smoke.js`, `load-tests/ramp.js` with thresholds.
+- `load-tests/smoke.js`, `ramp.js` (thresholds) and `steady.js` (drill traffic), run in-cluster by `scripts/run-load-test.sh`.
 - App gets two **test-only** fault switches (env-controlled): error injection and artificial latency, used for Scenarios B and C.
-- `docs/troubleshooting.md`, `docs/incident-postmortem.md`, `docs/results.md` (observed numbers only).
+- `docs/troubleshooting.md`, `docs/incident-postmortem.md`, `docs/load-test-results.md` (observed numbers only).
+- `scripts/build-regression-image.sh` builds the broken release for Scenario D.
 
 ### Phase 8 — CI/CD and security
 
