@@ -1,0 +1,14 @@
+# Accepted Trivy findings. Each entry is SCOPED (one check, one file), EXPLAINED, and
+# EXPIRES, so it gets re-reviewed instead of hiding problems forever.
+#
+# Example: if someone later adds DB_PASSWORD to the app ConfigMap, KSV-01010 still fires,
+# because only the specific false positive below is ignored, and only until it expires.
+misconfigurations:
+  - id: KSV-01010
+    paths:
+      - "app.yaml"          # rendered k8s/overlays/local (see `make security`)
+    statement: >-
+      False positive: Trivy's key-name heuristic flags APP_LOG_LEVEL (value "INFO") as
+      sensitive. The ConfigMap holds only APP_NAME, APP_LOG_LEVEL and APP_SEED_ITEMS.
+      Secrets never go in ConfigMaps in this project (docs/security.md).
+    expired_at: 2027-04-15
