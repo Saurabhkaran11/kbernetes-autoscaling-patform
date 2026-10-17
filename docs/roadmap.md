@@ -59,7 +59,7 @@ Each phase ends with: summary, files changed, verification commands, expected re
 - `requirements.lock` (hash-pinned), `.trivyignore.yaml` (scoped, expiring), `make security` / `make render` / `make lock`.
 - `k8s/base/networkpolicy.yaml` — default deny; ingress only from Prometheus and loadtest.
 - `docs/security.md`, `docs/ci-cd.md` — controls with evidence, known limits, deployment design.
-- First GitHub run (private repo): all 3 jobs green, run 38860472342.
+- First GitHub run (private repo): all 3 jobs green, run 38860472342. Public repo: [https://github.com/Saurabhkaran11/kbernetes-autoscaling-patform](https://github.com/Saurabhkaran11/kbernetes-autoscaling-patform), run 38990703832 green.
 
 ### Phase 9 — Documentation and portfolio (done)
 

@@ -69,9 +69,10 @@ act -j security
 
 ## 3. First run on GitHub (observed)
 
-- **Repository:** private, `Saurabhkaran11/kubernetes-autoscaling-platform`.
-- **First push:** `main` at `921e58b`, run [#38860472342](https://github.com/Saurabhkaran11/kubernetes-autoscaling-platform/actions/runs/38860472342), 2026-10-16 06:18Z.
-- **Result:** **success on the first attempt**, with no workflow changes needed after the local validation.
+- **Public repository:** [`Saurabhkaran11/kbernetes-autoscaling-patform`](https://github.com/Saurabhkaran11/kbernetes-autoscaling-patform). The full history was pushed on 2026-10-17, after a secret scan of every commit.
+- **Latest public run:** [#38990703832](https://github.com/Saurabhkaran11/kbernetes-autoscaling-patform/actions/runs/38990703832) on `8630ab8`, green: lint and tests 25 s, alert rules 18 s, build and security 43 s.
+- **First run ever:** in the earlier private repository (`kubernetes-autoscaling-platform`, not publicly viewable), `main` at `921e58b`, run #38860472342, 2026-10-16 06:18Z.
+- **Result:** **success on the first attempt**, with no workflow changes needed after the local validation. That first run's numbers:
 
 | Job | Result | Duration | Evidence from the log |
 |---|---|---|---|
@@ -85,10 +86,10 @@ act -j security
 
 ## 4. Re-running it on GitHub
 
-Commits stay local by default, and each push is a deliberate step:
+Commits stay local by default, and each push is a deliberate step. Push to the public repository (remote `public`):
 
 ```bash
-git push
+git push public main
 ```
 
 ```bash
@@ -101,18 +102,17 @@ To re-run the workflow without a new commit:
 gh workflow run ci.yml
 ```
 
-How the repository was created, for reference:
+How the remotes were set up, for reference:
+
+- `origin` is the private repository, created with `gh repo create kubernetes-autoscaling-platform --private --source . --remote origin`.
+- `public` was added for the public repository:
 
 ```bash
-gh repo create kubernetes-autoscaling-platform --private --source . --remote origin
+git remote add public https://github.com/Saurabhkaran11/kbernetes-autoscaling-patform.git
 ```
 
 ```bash
-git push -u origin main
-```
-
-```bash
-gh run watch
+git push public main
 ```
 
 ## 5. Deployment automation: designed, deliberately not built

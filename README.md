@@ -1,6 +1,6 @@
 # Cloud-Native Application Deployment and Auto-Scaling Platform
 
-[![ci](https://github.com/Saurabhkaran11/kubernetes-autoscaling-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/Saurabhkaran11/kubernetes-autoscaling-platform/actions/workflows/ci.yml)
+[![ci](https://github.com/Saurabhkaran11/kbernetes-autoscaling-patform/actions/workflows/ci.yml/badge.svg)](https://github.com/Saurabhkaran11/kbernetes-autoscaling-patform/actions/workflows/ci.yml)
 
 This project is a FastAPI service running on a local Kubernetes cluster (kind). It:
 
