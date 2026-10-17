@@ -56,6 +56,10 @@ grafana:
       label: grafana_dashboard   # any ConfigMap with this label is loaded as a dashboard
       labelValue: "1"
       searchNamespace: ALL
+    # The two sidecars (dashboard + datasource loaders) peaked at 80 MiB over 24 h.
+    resources:
+      requests: { cpu: 10m, memory: 64Mi }
+      limits:   { memory: 192Mi }
   # Sized from measurement, twice:
   #   1. At a 384Mi limit Grafana 13 was OOMKilled twice while rendering dashboards
   #      (working set peaked at 376-383Mi). The limit was raised to 768Mi.
@@ -65,6 +69,27 @@ grafana:
   resources:
     requests: { cpu: 50m, memory: 384Mi }
     limits:   { memory: 1Gi }
+
+# ---------------------------------------------------------------- operator and exporters
+# Every container gets a memory limit, sized at roughly 2-3x its measured 24 h peak (Phase 9):
+#   operator 37 MiB, config-reloader 35 MiB, kube-state-metrics 35 MiB.
+# Memory limits only for these small helpers: a memory leak can take down a node, while a
+# CPU limit on a bursty sidecar mostly causes throttling (see the CPU-throttling notes in
+# docs/load-test-results.md). The app itself keeps CPU limits, because the HPA relies on them.
+prometheusOperator:
+  resources:
+    requests: { cpu: 20m, memory: 48Mi }
+    limits:   { memory: 128Mi }
+  # Covers the config-reloader sidecar AND init container in Prometheus and Alertmanager.
+  prometheusConfigReloader:
+    resources:
+      requests: { cpu: 10m, memory: 32Mi }
+      limits:   { memory: 96Mi }
+
+kube-state-metrics:
+  resources:
+    requests: { cpu: 10m, memory: 48Mi }
+    limits:   { memory: 128Mi }
 
 # ---------------------------------------------------------------- what we turn OFF
 # node-exporter: host-level metrics (disk, network). Not needed for this project, and on
