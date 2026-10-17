@@ -1,0 +1,17 @@
+# Helm chart for the Items API: the same resources as k8s/overlays/local, packaged for
+# versioned installs, upgrades and rollbacks (`helm history` / `helm rollback`).
+#
+# Kustomize (k8s/) stays the source of truth for the local cluster; this chart is the
+# packaging exercise. `make helm-check` proves the two render equivalent manifests.
+#
+# The chart does NOT create its namespace: Helm stores the release record inside the
+# namespace, so it must exist first. Create it with the Pod Security labels yourself:
+#   kubectl create namespace autoscale-helm
+#   kubectl label namespace autoscale-helm pod-security.kubernetes.io/enforce=restricted
+#   helm upgrade --install items-api helm/items-api -n autoscale-helm
+apiVersion: v2
+name: items-api
+description: FastAPI items service with probes, resource limits, HPA and NetworkPolicies
+type: application
+version: 0.1.0        # chart version: bump when the chart itself changes
+appVersion: "0.4.0"   # the app version this chart deploys by default

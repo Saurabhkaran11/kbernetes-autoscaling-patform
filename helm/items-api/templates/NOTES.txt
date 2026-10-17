@@ -1,0 +1,13 @@
+{{ include "items-api.fullname" . }} installed in namespace {{ .Release.Namespace }}.
+
+Check it:
+  kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "items-api.fullname" . }}
+  kubectl -n {{ .Release.Namespace }} get pods,svc,hpa
+
+Reach it from your Mac (port-forward isn't affected by the NetworkPolicy):
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "items-api.fullname" . }} 8080:{{ .Values.service.port }}
+  curl -s localhost:8080/api/v1/stats
+
+History and rollback:
+  helm -n {{ .Release.Namespace }} history {{ .Release.Name }}
+  helm -n {{ .Release.Namespace }} rollback {{ .Release.Name }} <REVISION>

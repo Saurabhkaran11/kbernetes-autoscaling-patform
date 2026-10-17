@@ -8,7 +8,7 @@
 PY := .venv/bin/python
 PORT ?= 8000
 
-.PHONY: help install test lint format run test-alerts lock render security
+.PHONY: help install test lint format run test-alerts lock render security helm-check
 
 help:  ## List targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -64,3 +64,10 @@ security: render  ## Dependency, secret, misconfiguration and image scans (what 
 	@echo "== 4. Image vulnerabilities with a fix available (trivy image)"
 	docker build -q -t $(IMAGE) .
 	trivy image --quiet --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 $(IMAGE)
+
+helm-check:  ## Lint the Helm chart and prove it renders the same workload as Kustomize
+	helm lint helm/items-api --strict
+	mkdir -p .build
+	kubectl kustomize k8s/overlays/local > .build/kustomize.yaml
+	helm template items-api helm/items-api -n autoscale-app > .build/helm.yaml
+	$(PY) scripts/compare_helm_kustomize.py .build/kustomize.yaml .build/helm.yaml
