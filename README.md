@@ -300,6 +300,7 @@ kubernetes-autoscaling-platform/
 | [security.md](docs/security.md) | Controls with evidence, scan gates, accepted risks, known limits |
 | [acceptance.md](docs/acceptance.md) | The 15 acceptance criteria and the evidence for each |
 | [portfolio.md](docs/portfolio.md) | Resume bullets, a 5-minute demo script, how to capture evidence |
+| [interview-prep.md](docs/interview-prep.md) | 25 questions with design reasoning, 8 troubleshooting scenarios, 5 system-design questions |
 
 ## Known limitations
 

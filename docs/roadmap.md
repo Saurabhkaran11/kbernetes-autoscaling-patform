@@ -13,7 +13,7 @@ Each phase ends with: summary, files changed, verification commands, expected re
 | 7 ✅ | Load tests + failure drills | k6 results captured; HPA scale-up/down observed; 4 scenarios documented; postmortem | 7, 12 |
 | 8 ✅ | CI/CD + security | Actions green on GitHub; Trivy + pip-audit run; `act` works locally | 13, 14 |
 | 9 ✅ | Docs + portfolio | README reproducible from a clean clone; screenshots in `docs/images/` | 15 |
-| 10 | Interview prep | 25 Q&A + 5 system-design questions + troubleshooting drills | — |
+| 10 ✅ | Interview prep | 25 Q&A + 5 system-design questions + troubleshooting drills | — |
 
 ## Phase details
 
