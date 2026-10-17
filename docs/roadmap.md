@@ -12,7 +12,7 @@ Each phase ends with: summary, files changed, verification commands, expected re
 | 6 ✅ | Prometheus + Grafana + alerts | Targets `UP`; dashboard shows live data; one alert fires and resolves | 8, 9, 10 |
 | 7 ✅ | Load tests + failure drills | k6 results captured; HPA scale-up/down observed; 4 scenarios documented; postmortem | 7, 12 |
 | 8 ✅ | CI/CD + security | Actions green on GitHub; Trivy + pip-audit run; `act` works locally | 13, 14 |
-| 9 | Docs + portfolio | README reproducible from a clean clone; screenshots in `docs/images/` | 15 |
+| 9 ✅ | Docs + portfolio | README reproducible from a clean clone; screenshots in `docs/images/` | 15 |
 | 10 | Interview prep | 25 Q&A + 5 system-design questions + troubleshooting drills | — |
 
 ## Phase details
@@ -60,3 +60,12 @@ Each phase ends with: summary, files changed, verification commands, expected re
 - `k8s/base/networkpolicy.yaml` — default deny; ingress only from Prometheus and loadtest.
 - `docs/security.md`, `docs/ci-cd.md` — controls with evidence, known limits, deployment design.
 - First GitHub run (private repo): all 3 jobs green, run 38860472342.
+
+### Phase 9 — Documentation and portfolio (done)
+
+- `README.md` rewritten as the entry point: measured results, three Mermaid diagrams, macOS quick start.
+- `helm/items-api/` chart plus `make helm-check`: field-by-field equivalence with Kustomize, verified by install, upgrade and rollback.
+- `docs/acceptance.md`: the 15 criteria with evidence, including a fresh-clone run of the README steps.
+- `docs/portfolio.md`: resume bullets, demo script, interview stories, how to capture evidence.
+- An audit gave every monitoring container a memory limit (8 were missing).
+- `docs/diagrams.html` refreshed to the final design.

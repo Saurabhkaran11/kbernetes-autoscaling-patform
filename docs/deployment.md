@@ -5,7 +5,7 @@ Anyone with a Mac can follow these steps top to bottom.
 Each step is tagged with the phase that delivers it.
 Steps tagged with a later phase than the current one will not work yet.
 
-> **Status:** Phases 1–7 complete. Steps 0–9 work today.
+> **Status:** All phases through 9 complete. Every step below was run on this project (see [acceptance.md](acceptance.md) for evidence).
 
 ---
 
