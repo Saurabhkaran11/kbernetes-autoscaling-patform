@@ -80,7 +80,7 @@ make test-alerts
 ```
 
 - **What it does:** extracts the rule groups from the PrometheusRule (`scripts/extract_rules.py`), runs `promtool check rules`, then runs `promtool test rules` against `monitoring/alerts/items-api-rules.test.yaml`.
-- **Test cases:** 11, covering:
+- **Test cases:** 13 (11 here, plus 2 for `ContainerMemoryNearLimit` added in Phase 7), covering:
   - fires above each threshold,
   - silent below each threshold,
   - pending vs firing timing,
@@ -94,6 +94,9 @@ make test-alerts
 | Error threshold 5% → 50% | `error rate of ~9% fires after 2 minutes` |
 | Removed `or vector(0)` | `down when there are no scrape targets at all` |
 | Counted probe paths as user traffic | `500s on probe paths are ignored` |
+| Latency threshold 0.5 s → 1.5 s | `p95 around 975 ms fires after 5 minutes` |
+| Autoscaler `>=` max → `>` max | `autoscaler pinned at max for 10 minutes fires` |
+| Memory alert threshold 0.9 → 0.95 (Phase 7 addition) | `container at ~93% of its memory limit for 5+ minutes fires` |
 
 ## 4. Evidence (observed)
 
@@ -215,6 +218,7 @@ kubectl -n autoscale-app scale deploy/items-api --replicas=0
 
 ## 6. Known limitations
 
+- **History lost on restart, observed:** adding config-reloader limits in Phase 9 restarted Prometheus, and its 2-day history was lost with the `emptyDir`. That's the limitation below, in practice.
 - **Short retention:** 2 days, and Prometheus stores data in an `emptyDir`, so a Prometheus pod restart loses history. Production needs a PersistentVolume, or remote storage such as Thanos or Mimir.
 - **Single instances:** one Prometheus replica and one Alertmanager, so there is no HA.
 - **Alerts don't notify anyone:** the receiver is `null`. Notifications need a receiver with secret-managed credentials.
